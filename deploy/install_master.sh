@@ -42,6 +42,26 @@ echo ""
 
 print_status "Starting VPN Panel Master Server installation..."
 
+# Check if directory exists and handle it
+if [ -d "/opt/vpn-panel/backend" ]; then
+    print_status "Directory /opt/vpn-panel/backend already exists."
+    read -p "Do you want to remove it and start fresh? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_status "Removing existing directory..."
+        rm -rf /opt/vpn-panel/backend || print_error "Failed to remove existing directory"
+    else
+        print_status "Updating existing installation..."
+        cd /opt/vpn-panel/backend
+        git fetch origin
+        git reset --hard origin/main
+        git clean -fd
+    fi
+fi
+
+# Create directory if it doesn't exist
+mkdir -p /opt/vpn-panel/backend
+
 # Update system
 print_status "Updating system packages..."
 apt-get update && apt-get upgrade -y || print_error "Failed to update system packages"
