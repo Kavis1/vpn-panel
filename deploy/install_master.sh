@@ -205,11 +205,25 @@ SERVER_HOST=https://${DOMAIN}
 FRONTEND_URL=https://${DOMAIN}
 EOL
 
-# Set up PostgreSQL
+# Configure PostgreSQL
 print_status "Configuring PostgreSQL..."
-sudo -u postgres psql -c "CREATE DATABASE vpnpanel;" || print_error "Failed to create database"
-sudo -u postgres psql -c "CREATE USER vpnpanel WITH PASSWORD '$(grep -oP 'DATABASE_URL=.*?@' /opt/vpn-panel/backend/.env | cut -d':' -f3 | cut -d'@' -f1)';" || print_error "Failed to create database user"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE vpnpanel TO vpnpanel;" || print_error "Failed to grant database privileges"
+
+# Check if database exists
+if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$POSTGRES_DB"; then
+    sudo -u postgres psql -c "CREATE DATABASE $POSTGRES_DB;" || print_error "Failed to create database"
+    sudo -u postgres psql -c "CREATE USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';" || print_error "Failed to create database user"
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $POSTGRES_USER;" || print_error "Failed to grant privileges"
+else
+    print_status "Database $POSTGRES_DB already exists, skipping creation..."
+    
+    # Check if user exists
+    if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_USER'" | grep -q 1; then
+        sudo -u postgres psql -c "CREATE USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';" || print_status "Warning: Failed to create database user (may already exist)"
+    fi
+    
+    # Ensure user has privileges
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $POSTGRES_USER;" || print_status "Warning: Failed to grant privileges (may already be granted)"
+fi
 
 # Run database migrations
 print_status "Running database migrations..."
