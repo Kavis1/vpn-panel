@@ -166,13 +166,15 @@ wget -qO- https://raw.githubusercontent.com/Kavis1/vpn-panel/main/deploy/install
 
 ## 📚 Документация
 
-Полная документация доступна в директории `docs/`:
+Полная документация доступна в директории [docs/](docs/):
 
-- [API Reference](docs/API.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
-- [Development Guide](docs/DEVELOPMENT.md)
-- [Security](docs/SECURITY.md)
+- [Главная страница](docs/index.md)
+- [Установка](docs/installation/README.md)
+- [Настройка](docs/configuration/README.md)
+- [Руководство администратора](docs/admin/README.md)
+- [Руководство пользователя](docs/user/README.md)
+- [API документация](docs/api/README.md)
+- [Разработка](docs/development/README.md)
 
 ## 🤝 Участие в проекте
 
