@@ -82,9 +82,33 @@ chmod +x /usr/local/bin/docker-compose || print_error "Failed to make Docker Com
 print_status "Setting up project directory..."
 mkdir -p /opt/vpn-panel/{backend,frontend,data/{postgres,redis,certs}} || print_error "Failed to create project directories"
 
-# Clone repository
-print_status "Cloning VPN Panel repository..."
-git clone https://github.com/Kavis1/vpn-panel.git /opt/vpn-panel/backend || print_error "Failed to clone repository"
+# Clone or update repository
+print_status "Setting up VPN Panel repository..."
+mkdir -p /opt/vpn-panel
+
+if [ -d "/opt/vpn-panel/backend/.git" ]; then
+    # If it's a git repository, update it
+    print_status "Updating existing repository..."
+    cd /opt/vpn-panel/backend
+    git fetch origin
+    git reset --hard origin/main
+    git clean -fd
+else
+    # If directory exists but is not a git repository
+    if [ -d "/opt/vpn-panel/backend" ]; then
+        print_status "Directory exists but is not a git repository. Initializing..."
+        cd /opt/vpn-panel/backend
+        git init
+        git remote add origin https://github.com/Kavis1/vpn-panel.git
+        git fetch
+        git reset --hard origin/main
+    else
+        # Fresh clone
+        print_status "Cloning repository..."
+        git clone https://github.com/Kavis1/vpn-panel.git /opt/vpn-panel/backend || print_error "Failed to clone repository"
+        cd /opt/vpn-panel/backend
+    fi
+fi
 
 # Set up Python virtual environment
 print_status "Setting up Python virtual environment..."
