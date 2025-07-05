@@ -86,28 +86,28 @@ mkdir -p /opt/vpn-panel/{backend,frontend,data/{postgres,redis,certs}} || print_
 print_status "Setting up VPN Panel repository..."
 mkdir -p /opt/vpn-panel
 
-if [ -d "/opt/vpn-panel/backend/.git" ]; then
-    # If it's a git repository, update it
-    print_status "Updating existing repository..."
+if [ -d "/opt/vpn-panel/backend" ]; then
     cd /opt/vpn-panel/backend
-    git fetch origin
-    git reset --hard origin/main
-    git clean -fd
-else
-    # If directory exists but is not a git repository
-    if [ -d "/opt/vpn-panel/backend" ]; then
+    
+    if [ -d ".git" ]; then
+        # If it's a git repository, update it
+        print_status "Updating existing repository..."
+        git fetch origin
+        git reset --hard origin/main
+        git clean -fd
+    else
+        # If directory exists but is not a git repository
         print_status "Directory exists but is not a git repository. Initializing..."
-        cd /opt/vpn-panel/backend
         git init
         git remote add origin https://github.com/Kavis1/vpn-panel.git
         git fetch
         git reset --hard origin/main
-    else
-        # Fresh clone
-        print_status "Cloning repository..."
-        git clone https://github.com/Kavis1/vpn-panel.git /opt/vpn-panel/backend || print_error "Failed to clone repository"
-        cd /opt/vpn-panel/backend
     fi
+else
+    # Fresh clone
+    print_status "Cloning repository..."
+    git clone https://github.com/Kavis1/vpn-panel.git /opt/vpn-panel/backend || print_error "Failed to clone repository"
+    cd /opt/vpn-panel/backend
 fi
 
 # Set up Python virtual environment
@@ -119,7 +119,36 @@ pip install --upgrade pip || print_error "Failed to upgrade pip"
 # Install Python dependencies
 print_status "Installing Python dependencies..."
 python -m pip install --upgrade pip
-pip install -r requirements.txt || print_error "Failed to install Python dependencies"
+
+# Check if requirements.txt exists
+if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt || print_error "Failed to install Python dependencies"
+else
+    # Install core dependencies directly
+    print_status "requirements.txt not found, installing core dependencies..."
+    pip install \
+        fastapi==0.95.0 \
+        uvicorn[standard]==0.22.0 \
+        sqlalchemy[asyncio]==2.0.20 \
+        alembic==1.12.0 \
+        python-jose[cryptography]==3.3.0 \
+        passlib[bcrypt]==1.7.4 \
+        python-multipart==0.0.6 \
+        python-dotenv==1.0.0 \
+        psycopg2-binary==2.9.6 \
+        python-dateutil==2.8.2 \
+        pydantic[email]==1.10.7 \
+        python-slugify==8.0.1 \
+        typing-extensions==4.5.0 \
+        aiosmtplib==2.0.1 \
+        jinja2==3.1.2 \
+        python-json-logger==2.0.7 \
+        pyotp==2.8.0 \
+        qrcode==7.4.2 \
+        pytz==2023.3 \
+        email-validator==2.0.0 \
+        || print_error "Failed to install core Python dependencies"
+fi
 
 # Install additional required packages for database
 print_status "Installing database dependencies..."
