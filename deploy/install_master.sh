@@ -94,7 +94,25 @@ pip install --upgrade pip || print_error "Failed to upgrade pip"
 
 # Install Python dependencies
 print_status "Installing Python dependencies..."
-cd /opt/vpn-panel/backend && pip install -r requirements.txt || print_error "Failed to install Python dependencies"
+python -m pip install --upgrade pip
+pip install -r requirements.txt || print_error "Failed to install Python dependencies"
+
+# Install additional required packages for database
+print_status "Installing database dependencies..."
+pip install alembic psycopg2-binary || print_error "Failed to install database dependencies"
+
+# Configure alembic.ini
+print_status "Configuring database migrations..."
+if [ -f "/opt/vpn-panel/backend/alembic.ini" ]; then
+    print_status "alembic.ini already exists, skipping..."
+else
+    cp /opt/vpn-panel/backend/alembic.ini.example /opt/vpn-panel/backend/alembic.ini || print_error "Failed to copy alembic.ini"
+    sed -i "s/\$POSTGRES_USER/$POSTGRES_USER/g" /opt/vpn-panel/backend/alembic.ini
+    sed -i "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" /opt/vpn-panel/backend/alembic.ini
+    sed -i "s/\$POSTGRES_HOST/$POSTGRES_HOST/g" /opt/vpn-panel/backend/alembic.ini
+    sed -i "s/\$POSTGRES_PORT/$POSTGRES_PORT/g" /opt/vpn-panel/backend/alembic.ini
+    sed -i "s/\$POSTGRES_DB/$POSTGRES_DB/g" /opt/vpn-panel/backend/alembic.ini
+fi
 
 # Configure environment variables
 print_status "Configuring environment variables..."
@@ -142,7 +160,29 @@ sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE vpnpanel TO vpnpanel;
 
 # Run database migrations
 print_status "Running database migrations..."
-cd /opt/vpn-panel/backend && alembic upgrade head || print_error "Failed to run database migrations"
+cd /opt/vpn-panel/backend
+
+# Initialize alembic if not already initialized
+if [ ! -d "/opt/vpn-panel/backend/alembic" ]; then
+    print_status "Initializing alembic..."
+    alembic init alembic || print_error "Failed to initialize alembic"
+    
+    # Copy our custom env.py
+    cp /opt/vpn-panel/backend/alembic.ini.example /opt/vpn-panel/backend/alembic.ini
+    cp /opt/vpn-panel/backend/alembic/env.py /opt/vpn-panel/backend/alembic/env.py
+    cp /opt/vpn-panel/backend/alembic/script.py.mako /opt/vpn-panel/backend/alembic/script.py.mako
+    
+    # Create versions directory
+    mkdir -p /opt/vpn-panel/backend/alembic/versions
+    touch /opt/vpn-panel/backend/alembic/versions/.gitkeep
+    
+    # Create initial migration
+    print_status "Creating initial migration..."
+    alembic revision --autogenerate -m "Initial migration" || print_error "Failed to create initial migration"
+fi
+
+# Run migrations
+alembic upgrade head || print_error "Failed to run database migrations"
 
 # Install Xray
 print_status "Installing Xray..."
