@@ -1,0 +1,3 @@
+# Errors
+
+Documentation for errors.
