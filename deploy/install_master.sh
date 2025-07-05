@@ -64,7 +64,7 @@ mkdir -p /opt/vpn-panel/{backend,frontend,data/{postgres,redis,certs}} || print_
 
 # Clone repository
 print_status "Cloning VPN Panel repository..."
-git clone https://github.com/your-username/vpn-panel.git /opt/vpn-panel/backend || print_error "Failed to clone repository"
+git clone https://github.com/Kavis1/vpn-panel.git /opt/vpn-panel/backend || print_error "Failed to clone repository"
 
 # Set up Python virtual environment
 print_status "Setting up Python virtual environment..."
