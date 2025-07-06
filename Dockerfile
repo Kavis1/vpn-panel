@@ -18,13 +18,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set work directory
 WORKDIR /app
 
-# Copy only requirements first to leverage Docker cache
-COPY pyproject.toml ./
+# Copy project files
+COPY . .
 
-# Install dependencies first (this layer will be cached)
+# Install dependencies
 RUN pip install --upgrade pip && \
-    pip install -e . && \
-    pip install uvicorn[standard] gunicorn
+    pip install --no-cache-dir -e . && \
+    pip install --no-cache-dir uvicorn[standard] gunicorn && \
+    # Verify installations
+    echo "===== Verifying installations =====" && \
+    echo "Python version: $(python --version)" && \
+    echo "Pip version: $(pip --version)" && \
+    echo "Uvicorn path: $(which uvicorn)" && \
+    echo "Uvicorn version: $(python -c \"import uvicorn; print(uvicorn.__version__)\")"
 
 # Runtime stage
 FROM python:3.10-slim
@@ -44,21 +50,31 @@ WORKDIR /app
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app /app
 
-# Install runtime dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir \
-        uvicorn[standard] \
-        gunicorn \
-        celery[redis] && \
-    ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker && \
-    ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat && \
-    # Verify installations
-    echo "===== Verifying installations =====" && \
-    echo "Python version: $(python --version)" && \
-    echo "Pip version: $(pip --version)" && \
-    echo "Uvicorn path: $(which uvicorn)" && \
-    echo "Uvicorn version: $(python -c \"import uvicorn; print(uvicorn.__version__)\")" && \
-    chmod +x /usr/local/bin/*
+# Create necessary directories and set permissions
+RUN mkdir -p /app/static /app/media /app/logs /app/scripts \
+    && chown -R appuser:appuser /app \
+    && chmod -R 755 /app/static /app/media /app/logs
+
+# Switch to non-root user
+USER appuser
+
+# Set environment variables
+ENV PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/usr/local/bin:${PATH}" \
+    # Uvicorn settings
+    UVICORN_HOST=0.0.0.0 \
+    UVICORN_PORT=8000 \
+    UVICORN_WORKERS=2 \
+    # Application settings
+    ALEMBIC_CONFIG=/app/alembic.ini
+
+# Expose the port the app runs on
+EXPOSE 8000
+
+# Command to run the application
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # Set environment variables
 ENV PYTHONPATH=/app/backend:/app \
