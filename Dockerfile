@@ -1,20 +1,3 @@
-# Base image
-FROM python:3.11-slim AS base
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=off \
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100 \
-    POETRY_HOME="/opt/poetry" \
-    POETRY_VIRTUALENVS_IN_PROJECT=true \
-    POETRY_NO_INTERACTION=1 \
-    PYSETUP_PATH="/opt/pysetup" \
-    VENV_PATH="/opt/pysetup/.venv"
-
-ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
-
 # Build stage
 FROM python:3.9-slim as builder
 
@@ -30,23 +13,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir poetry==1.4.2
 
 # Copy only requirements to cache them in docker layer
-COPY pyproject.toml ./
-# Create empty poetry.lock if it doesn't exist
-RUN touch poetry.lock 2>/dev/null || true
+COPY pyproject.toml poetry.lock* ./
 
 # Install dependencies
-RUN poetry export -f requirements.txt --output requirements.txt --without-hashes || \
-    { echo "Warning: poetry export failed, falling back to pip install"; \
-      pip install --user -e .; }
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi --no-root && \
+    poetry export -f requirements.txt --output requirements.txt --without-hashes
 
 # Runtime stage
 FROM python:3.9-slim
 
 WORKDIR /app
 
-# Copy only necessary files from builder
-COPY --from=builder /root/.local /root/.local
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install them first for better caching
+COPY --from=builder /app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
 COPY . .
+
+# Create necessary directories
+RUN mkdir -p /var/log/vpn-panel
 
 # Make sure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH

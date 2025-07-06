@@ -7,6 +7,10 @@ name = "vpn-panel"
 version = "0.1.0"
 description = "VPN Panel for managing VPN services"
 authors = ["Kavis1 <kavis1@example.com>"]
+packages = [
+    { include = "backend" },
+    { include = "alembic" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.9"
@@ -36,8 +40,7 @@ mypy = "^0.991"
 [tool.poetry.scripts]
 vpn-panel = "backend.app.main:main"
 
-[tool.poetry.package]
-include = ["backend*", "alembic*"]
+# Package include patterns are now in the main [tool.poetry] section
 
 [project.entry-points]
 console_scripts = [
