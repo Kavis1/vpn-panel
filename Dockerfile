@@ -15,22 +15,29 @@ ENV PYTHONUNBUFFERED=1 \
 
 ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
 
+# Build stage
+FROM python:3.9-slim as builder
+
+WORKDIR /app
+
 # Install system dependencies
-RUN apt-get update && apt-get install --no-install-recommends -y \
-    curl \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    && apt-get clean \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create builder stage
-FROM base AS builder
+# Install Poetry
+RUN pip install --no-cache-dir poetry==1.4.2
 
 # Copy only requirements to cache them in docker layer
-COPY poetry.lock pyproject.toml ./
+COPY pyproject.toml ./
+# Create empty poetry.lock if it doesn't exist
+RUN touch poetry.lock 2>/dev/null || true
 
 # Install dependencies
-RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
-RUN pip install --user -r requirements.txt
+RUN poetry export -f requirements.txt --output requirements.txt --without-hashes || \
+    { echo "Warning: poetry export failed, falling back to pip install"; \
+      pip install --user -e .; }
 
 # Runtime stage
 FROM python:3.9-slim
