@@ -47,24 +47,23 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create necessary directories with proper permissions
-RUN mkdir -p /var/log/vpn-panel && \
-    mkdir -p /app/backend/static && \
-    chown -R appuser:appuser /app /var/log/vpn-panel
-
 # Set environment variables
 ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Create a non-root user and set permissions
+# Create non-root user and set up directories with proper permissions
 RUN useradd -m -d /home/appuser appuser && \
+    mkdir -p /var/log/vpn-panel /app/backend/static && \
     chown -R appuser:appuser /app /var/log/vpn-panel
 
 # Switch to non-root user
 USER appuser
 WORKDIR /app
+
+# Create necessary directories as appuser
+RUN mkdir -p /app/backend/static /var/log/vpn-panel
 
 # Expose the port the app runs on
 EXPOSE 8000

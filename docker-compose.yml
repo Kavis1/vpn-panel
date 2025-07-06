@@ -58,16 +58,14 @@ services:
         condition: service_healthy
     volumes:
       - .:/app:delegated
-      - /app/backend/static
-      - /var/log/vpn-panel:/var/log/vpn-panel
+      - vpn-panel-static:/app/backend/static
+      - vpn-panel-logs:/var/log/vpn-panel
     command: >
-      sh -c "mkdir -p /app/backend/static && 
-      chown -R 1000:1000 /app /var/log/vpn-panel && 
       python -m uvicorn backend.app.main:app 
       --host 0.0.0.0 
       --port 8000 
       --workers 2 
-      --log-level info"
+      --log-level info
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -84,3 +82,5 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  vpn-panel-static:
+  vpn-panel-logs:
