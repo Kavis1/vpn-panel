@@ -478,4 +478,11 @@ print_success "  1. Log in to the panel"
 print_success "  2. Go to Admin -> Users"
 print_success "  3. Click on your username"
 print_success "  4. Click 'Change Password'"
-print_success "\n==================================================\n"Installation completed successfully!
+print_success "\n==================================================\n"
+
+# Add the missing fi for the if statement at the beginning of the script
+if [ "$(id -u)" -ne 0 ]; then
+    exit 1
+fi
+
+echo "Installation completed successfully!"
