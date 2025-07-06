@@ -13,6 +13,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
@@ -21,12 +22,48 @@ RUN pip install "poetry==$POETRY_VERSION"
 # Set work directory
 WORKDIR /app
 
+# Create empty pyproject.toml if it doesn't exist
+COPY pyproject.toml* /app/
+RUN if [ ! -f /app/pyproject.toml ]; then \
+        echo '[tool.poetry]' > /app/pyproject.toml && \
+        echo 'name = "vpn-panel"' >> /app/pyproject.toml && \
+        echo 'version = "0.1.0"' >> /app/pyproject.toml && \
+        echo 'description = "VPN Panel"' >> /app/pyproject.toml && \
+        echo 'authors = ["Your Name <your.email@example.com>"]' >> /app/pyproject.toml && \
+        echo '' >> /app/pyproject.toml && \
+        echo '[tool.poetry.dependencies]' >> /app/pyproject.toml && \
+        echo 'python = "^3.10"' >> /app/pyproject.toml && \
+        echo 'fastapi = "^0.68.0"' >> /app/pyproject.toml && \
+        echo 'uvicorn = {extras = ["standard"], version = "^0.15.0"}' >> /app/pyproject.toml && \
+        echo 'sqlalchemy = "^1.4.23"' >> /app/pyproject.toml && \
+        echo 'alembic = "^1.7.4"' >> /app/pyproject.toml && \
+        echo 'psycopg2-binary = "^2.9.1"' >> /app/pyproject.toml && \
+        echo 'python-jose = {extras = ["cryptography"], version = "^3.3.0"}' >> /app/pyproject.toml && \
+        echo 'passlib = {extras = ["bcrypt"], version = "^1.7.4"}' >> /app/pyproject.toml && \
+        echo 'python-multipart = "^0.0.5"' >> /app/pyproject.toml && \
+        echo 'emails = "^0.6"' >> /app/pyproject.toml && \
+        echo 'python-dotenv = "^0.19.0"' >> /app/pyproject.toml && \
+        echo 'pydantic = "^1.8.2"' >> /app/pyproject.toml && \
+        echo 'python-json-logger = "^2.0.2"' >> /app/pyproject.toml && \
+        echo 'gunicorn = "^20.1.0"' >> /app/pyproject.toml && \
+        echo 'celery = {extras = ["redis"], version = "^5.2.2"}' >> /app/pyproject.toml && \
+        echo 'redis = "^4.1.0"' >> /app/pyproject.toml && \
+        echo 'httpx = "^0.22.0"' >> /app/pyproject.toml; \
+    fi
+
 # Copy only requirements to cache them in docker layer
-COPY poetry.lock pyproject.toml /app/
+COPY poetry.lock* /app/
 
 # Install dependencies
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --no-root --only main
+RUN if [ -f /app/poetry.lock ]; then \
+        poetry config virtualenvs.create false && \
+        poetry install --no-interaction --no-ansi --no-root --only main; \
+    else \
+        poetry add fastapi uvicorn sqlalchemy alembic psycopg2-binary \
+            python-jose[cryptography] passlib[bcrypt] python-multipart \
+            emails python-dotenv pydantic python-json-logger gunicorn \
+            celery[redis] redis httpx --no-interaction; \
+    fi
 
 # Copy project
 COPY . /app
