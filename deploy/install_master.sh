@@ -100,19 +100,21 @@ if [ -f "requirements.txt" ]; then
 if [ ! -d "/opt/vpn-panel/backend/venv" ]; then
     print_status "Creating Python virtual environment..."
     python3 -m venv /opt/vpn-panel/backend/venv || print_error "Failed to create virtual environment"
+    
+    # Activate virtual environment
+    print_status "Activating Python virtual environment..."
+    source /opt/vpn-panel/backend/venv/bin/activate || print_error "Failed to activate virtual environment"
+    
+    # Install core dependencies
+    print_status "Installing core Python dependencies..."
+    pip install --upgrade pip || print_status "Warning: Failed to upgrade pip"
+    pip install alembic psycopg2-binary sqlalchemy || print_error "Failed to install database dependencies"
+else
+    # Activate existing virtual environment
+    source /opt/vpn-panel/backend/venv/bin/activate || print_error "Failed to activate existing virtual environment"
 fi
 
-# Activate virtual environment
-print_status "Activating Python virtual environment..."
-source /opt/vpn-panel/backend/venv/bin/activate || print_error "Failed to activate virtual environment"
 
-# Install core Python dependencies
-print_status "Installing core Python dependencies..."
-pip install --upgrade pip || print_status "Warning: Failed to upgrade pip"
-
-# Install required packages for database and migrations
-print_status "Installing database dependencies..."
-pip install alembic psycopg2-binary sqlalchemy || print_error "Failed to install database dependencies"
 
 # Run database migrations
 print_status "Running database migrations..."
@@ -467,6 +469,7 @@ echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> /etc/vpn-panel/credentials
 echo "ADMIN_EMAIL=$EMAIL" >> /etc/vpn-panel/credentials
 echo "DOMAIN=$DOMAIN" >> /etc/vpn-panel/credentials
 chmod 600 /etc/vpn-panel/credentials
+
 print_success "\nIMPORTANT: Please save these credentials in a secure location!"
 print_success "Credentials are also saved to: /etc/vpn-panel/credentials"
 print_success "\nTo start the VPN Panel service:"
@@ -480,9 +483,5 @@ print_success "  3. Click on your username"
 print_success "  4. Click 'Change Password'"
 print_success "\n==================================================\n"
 
-# Add the missing fi for the if statement at the beginning of the script
-if [ "$(id -u)" -ne 0 ]; then
-    exit 1
-fi
-
 echo "Installation completed successfully!"
+exit 0
