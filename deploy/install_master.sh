@@ -277,7 +277,7 @@ else
     else
         print_status "Warning: No setup.py or pyproject.toml found in /opt/vpn-panel/backend"
         print_status "Falling back to regular installation..."
-    }
+    fi
 fi
 
 # Function to check if a Python package is installed
@@ -285,6 +285,42 @@ is_package_installed() {
     python3 -c "import $1" 2>/dev/null
     return $?
 }
+
+# Generate random admin credentials if not set
+if [ -z "$ADMIN_USERNAME" ]; then
+    ADMIN_USERNAME="admin_$(openssl rand -hex 3)"
+    ADMIN_PASSWORD="$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)"
+    export ADMIN_USERNAME ADMIN_PASSWORD
+    
+    # Save credentials to a file
+    mkdir -p /etc/vpn-panel
+    echo "ADMIN_USERNAME=$ADMIN_USERNAME" > /etc/vpn-panel/credentials
+    echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> /etc/vpn-panel/credentials
+    chmod 600 /etc/vpn-panel/credentials
+    
+    print_status "Generated admin username: $ADMIN_USERNAME"
+    print_status "Generated admin password: $ADMIN_PASSWORD"
+    print_status "Credentials saved to /etc/vpn-panel/credentials"
+fi
+
+# Generate random panel path if not set
+if [ -z "$PANEL_PATH" ]; then
+    PANEL_PATH="/panel_$(openssl rand -hex 8)"
+    export PANEL_PATH
+    
+    # Save panel path to a file
+    echo "PANEL_PATH=$PANEL_PATH" > /etc/vpn-panel/panel_path
+    chmod 644 /etc/vpn-panel/panel_path
+    
+    print_status "Generated panel path: $PANEL_PATH"
+fi
+
+# Update .env with generated values
+if [ -f "/opt/vpn-panel/backend/.env" ]; then
+    sed -i "s/^FIRST_SUPERUSER=.*/FIRST_SUPERUSER=$ADMIN_USERNAME/" /opt/vpn-panel/backend/.env
+    sed -i "s/^FIRST_SUPERUSER_PASSWORD=.*/FIRST_SUPERUSER_PASSWORD=$ADMIN_PASSWORD/" /opt/vpn-panel/backend/.env
+    sed -i "s|^PANEL_PATH=.*|PANEL_PATH=$PANEL_PATH|" /opt/vpn-panel/backend/.env
+fi
 
 # Install requirements directly from requirements.txt if it exists
 if [ -f "requirements.txt" ]; then
@@ -464,13 +500,31 @@ print_status "Configuring Nginx..."
 mkdir -p /etc/nginx/sites-available
 mkdir -p /etc/nginx/sites-enabled
 
-# Create Nginx config
+# Create Nginx configuration with random path
 cat > /etc/nginx/sites-available/vpn-panel << EOL
 server {
     listen 80;
-    server_name ${DOMAIN:-_};
-    
-    location / {
+    listen [::]:80;
+    server_name _;
+    return 301 https://\$host$PANEL_PATH;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name _;
+
+    ssl_certificate /etc/letsencrypt/live/\$host/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/\$host/privkey.pem;
+
+    # Deny access to hidden files
+    location ~ /\. {
+        deny all;
+        return 404;
+    }
+
+    # Main application
+    location $PANEL_PATH {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -479,8 +533,13 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 300s;
+        proxy_set_header X-Script-Name $PANEL_PATH;
+        proxy_redirect / $PANEL_PATH/;
+    }
+
+    # Redirect root to panel path
+    location = / {
+        return 301 $PANEL_PATH;
     }
 }
 EOL
@@ -599,11 +658,20 @@ rm -f /opt/vpn-panel/backend/create_admin.py
 
 # Print installation summary
 print_success "\n=================================================="
-print_success "  VPN Panel Master Server Installation Complete"
+print_success "  VPN Panel Installation Complete"
 print_success "=================================================="
-echo -e "\n${GREEN}Access your VPN Panel:${NC} https://$DOMAIN"
-echo -e "${GREEN}Admin Username:${NC} $ADMIN_USER"
-echo -e "${GREEN}Admin Password:${NC} $ADMIN_PASS"
-echo -e "\n${YELLOW}Please change the default admin password after first login.${NC}"
-
-print_success "\nInstallation completed successfully!"
+print_success "\nAccess the VPN Panel at: https://$(curl -s ifconfig.me)$PANEL_PATH"
+print_success "Admin username: $ADMIN_USERNAME"
+print_success "Admin password: $ADMIN_PASSWORD"
+print_success "\nIMPORTANT: Please save these credentials in a secure location!"
+print_success "Credentials are also saved to: /etc/vpn-panel/credentials"
+print_success "\nTo start the VPN Panel service:"
+print_success "  sudo systemctl start vpn-panel"
+print_success "\nTo view logs:"
+print_success "  sudo journalctl -u vpn-panel -f"
+print_success "\nTo change the admin password:"
+print_success "  1. Log in to the panel"
+print_success "  2. Go to Admin -> Users"
+print_success "  3. Click on your username"
+print_success "  4. Click 'Change Password'"
+print_success "\n==================================================\n"Installation completed successfully!
