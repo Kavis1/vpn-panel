@@ -27,285 +27,32 @@ if [ "$(id -u)" -ne 0 ]; then
     print_error "This script must be run as root"
 fi
 
-# Auto-generate admin credentials
+# Auto-generate admin credentials only
 ADMIN_USERNAME="admin_$(openssl rand -hex 3)"
 ADMIN_PASSWORD="$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)"
 
-# Get user input
+# Get user input for domain and email
 read -p "Enter your domain name (or press Enter to use IP address): " DOMAIN
 read -p "Enter admin email (for Let's Encrypt): " EMAIL
-read -p "Enter admin username: " ADMIN_USER
-read -s -p "Enter admin password: " ADMIN_PASS
-echo ""
 
-# Set default values if not provided
-[ -z "$DOMAIN" ] && DOMAIN=$(hostname -I | awk '{print $1}')
-[ -z "$EMAIL" ] && EMAIL="admin@$DOMAIN"
-[ -z "$ADMIN_USER" ] && ADMIN_USER="admin"
-[ -z "$ADMIN_PASS" ] && ADMIN_PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
-
-print_status "Starting VPN Panel Master Server installation..."
-
-# Check if directory exists and handle it
-if [ -d "/opt/vpn-panel/backend" ]; then
-    print_status "Directory /opt/vpn-panel/backend already exists."
-    read -p "Do you want to remove it and start fresh? [y/N] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_status "Removing existing directory..."
-        rm -rf /opt/vpn-panel/backend || print_error "Failed to remove existing directory"
-    else
-        print_status "Updating existing installation..."
-        cd /opt/vpn-panel/backend
-        git fetch origin
-        git reset --hard origin/main
-        git clean -fd
-    fi
+# Set default domain to IP if not provided
+if [ -z "$DOMAIN" ]; then
+    DOMAIN=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
+    print_status "Using detected IP address as domain: $DOMAIN"
 fi
 
-# Create directory if it doesn't exist
-mkdir -p /opt/vpn-panel/backend
+# Save credentials to a file
+mkdir -p /etc/vpn-panel
+echo "ADMIN_USERNAME=$ADMIN_USERNAME" > /etc/vpn-panel/credentials
+echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> /etc/vpn-panel/credentials
+echo "ADMIN_EMAIL=$EMAIL" >> /etc/vpn-panel/credentials
+echo "DOMAIN=$DOMAIN" >> /etc/vpn-panel/credentials
+chmod 600 /etc/vpn-panel/credentials
 
-# Update system
-print_status "Updating system packages..."
-apt-get update && apt-get upgrade -y || print_error "Failed to update system packages"
-
-# Install required packages
-print_status "Installing required packages..."
-apt-get install -y git curl wget python3-pip python3-venv nginx postgresql postgresql-contrib certbot python3-certbot-nginx || print_error "Failed to install required packages"
-
-# Install Docker and Docker Compose
-print_status "Installing Docker and Docker Compose..."
-curl -fsSL https://get.docker.com -o get-docker.sh || print_error "Failed to download Docker installation script"
-sh get-docker.sh || print_error "Failed to install Docker"
-usermod -aG docker $USER || print_error "Failed to add user to docker group"
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose || print_error "Failed to download Docker Compose"
-chmod +x /usr/local/bin/docker-compose || print_error "Failed to make Docker Compose executable"
-
-# Create project directory
-print_status "Setting up project directory..."
-mkdir -p /opt/vpn-panel/{backend,frontend,data/{postgres,redis,certs}} || print_error "Failed to create project directories"
-
-# Set up VPN Panel repository
-print_status "Setting up VPN Panel repository..."
-mkdir -p /opt/vpn-panel/backend
-cd /opt/vpn-panel/backend
-
-# Clone repository with full history
-print_status "Cloning repository..."
-git clone --depth 1 --no-single-branch https://github.com/Kavis1/vpn-panel.git . || print_error "Failed to clone repository"
-
-# Ensure we have all files
-print_status "Ensuring all files are checked out..."
-git fetch --unshallow || true
-git fetch --all
-git reset --hard origin/main
-
-# Debug: List files after clone
-print_status "Contents after git clone:"
-ls -la || true
-
-
-# Set up Python virtual environment
-print_status "Setting up Python virtual environment..."
-python3 -m venv /opt/vpn-panel/backend/venv || print_error "Failed to create Python virtual environment"
-source /opt/vpn-panel/backend/venv/bin/activate || print_error "Failed to activate virtual environment"
-pip install --upgrade pip || print_error "Failed to upgrade pip"
-
-# Install Python dependencies
-print_status "Installing Python dependencies..."
-python -m pip install --upgrade pip
-
-# Check if requirements.txt exists
-if [ -f "requirements.txt" ]; then
-    pip install -r requirements.txt || print_error "Failed to install Python dependencies"
-else
-    # Install core dependencies directly
-    print_status "requirements.txt not found, installing core dependencies..."
-    pip install \
-        fastapi==0.95.0 \
-        uvicorn[standard]==0.22.0 \
-        sqlalchemy[asyncio]==2.0.20 \
-        alembic==1.12.0 \
-        python-jose[cryptography]==3.3.0 \
-        passlib[bcrypt]==1.7.4 \
-        python-multipart==0.0.6 \
-        python-dotenv==1.0.0 \
-        psycopg2-binary==2.9.6 \
-        python-dateutil==2.8.2 \
-        pydantic[email]==1.10.7 \
-        python-slugify==8.0.1 \
-        typing-extensions==4.5.0 \
-        aiosmtplib==2.0.1 \
-        jinja2==3.1.2 \
-        python-json-logger==2.0.7 \
-        pyotp==2.8.0 \
-        qrcode==7.4.2 \
-        pytz==2023.3 \
-        email-validator==2.0.0 \
-        || print_error "Failed to install core Python dependencies"
-fi
-
-# Install additional required packages for database
-print_status "Installing database dependencies..."
-pip install alembic psycopg2-binary || print_error "Failed to install database dependencies"
-
-# Configure alembic.ini
-print_status "Configuring database migrations..."
-if [ -f "/opt/vpn-panel/backend/alembic.ini" ]; then
-    print_status "alembic.ini already exists, skipping..."
-else
-    cp /opt/vpn-panel/backend/alembic.ini.example /opt/vpn-panel/backend/alembic.ini || print_error "Failed to copy alembic.ini"
-    sed -i "s/\$POSTGRES_USER/$POSTGRES_USER/g" /opt/vpn-panel/backend/alembic.ini
-    sed -i "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" /opt/vpn-panel/backend/alembic.ini
-    sed -i "s/\$POSTGRES_HOST/$POSTGRES_HOST/g" /opt/vpn-panel/backend/alembic.ini
-    sed -i "s/\$POSTGRES_PORT/$POSTGRES_PORT/g" /opt/vpn-panel/backend/alembic.ini
-    sed -i "s/\$POSTGRES_DB/$POSTGRES_DB/g" /opt/vpn-panel/backend/alembic.ini
-fi
-
-# Configure environment variables
-print_status "Configuring environment variables..."
-cat > /opt/vpn-panel/backend/.env <<EOL
-# Application
-APP_ENV=production
-DEBUG=False
-SECRET_KEY=$(openssl rand -hex 32)
-
-# Database
-DATABASE_URL=postgresql://vpnpanel:$(openssl rand -hex 16)@localhost:5432/vpnpanel
-
-# JWT
-JWT_SECRET_KEY=$(openssl rand -hex 32)
-JWT_ALGORITHM=HS256
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=1440
-
-# First Superuser
-FIRST_SUPERUSER_EMAIL=${EMAIL}
-FIRST_SUPERUSER_PASSWORD=${ADMIN_PASS}
-FIRST_SUPERUSER_USERNAME=${ADMIN_USER}
-
-# Xray
-XRAY_EXECUTABLE_PATH=/usr/local/bin/xray
-XRAY_CONFIG_DIR=/etc/xray
-XRAY_API_ADDRESS=localhost
-XRAY_API_PORT=8080
-XRAY_API_TAG=api
-
-# HWID Device Limits
-HWID_DEVICE_LIMIT_ENABLED=True
-HWID_FALLBACK_DEVICE_LIMIT=5
-
-# Server
-SERVER_NAME=${DOMAIN}
-SERVER_HOST=https://${DOMAIN}
-FRONTEND_URL=https://${DOMAIN}
-EOL
-
-# Configure PostgreSQL
-print_status "Configuring PostgreSQL..."
-
-# Set default values if not provided
-POSTGRES_DB=${POSTGRES_DB:-vpnpanel}
-POSTGRES_USER=${POSTGRES_USER:-vpnpanel}
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-$(openssl rand -hex 16)}
-
-echo "Database: $POSTGRES_DB"
-echo "User: $POSTGRES_USER"
-
-# Check if database exists
-if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$POSTGRES_DB"; then
-    echo "Creating database $POSTGRES_DB..."
-    sudo -u postgres psql -c "CREATE DATABASE $POSTGRES_DB;" || print_error "Failed to create database"
-    
-    echo "Creating user $POSTGRES_USER..."
-    sudo -u postgres psql -c "CREATE USER \"$POSTGRES_USER\" WITH PASSWORD '$POSTGRES_PASSWORD';" || print_error "Failed to create database user"
-    
-    echo "Granting privileges..."
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$POSTGRES_DB\" TO \"$POSTGRES_USER\";" || print_error "Failed to grant privileges"
-else
-    print_status "Database $POSTGRES_DB already exists, skipping creation..."
-    
-    # Check if user exists
-    if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_USER'" | grep -q 1; then
-        echo "Creating user $POSTGRES_USER..."
-        sudo -u postgres psql -c "CREATE USER \"$POSTGRES_USER\" WITH PASSWORD '$POSTGRES_PASSWORD';" || print_status "Warning: Failed to create database user (may already exist)"
-    fi
-    
-    # Ensure user has privileges
-    echo "Ensuring privileges for $POSTGRES_USER on $POSTGRES_DB..."
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$POSTGRES_DB\" TO \"$POSTGRES_USER\";" || print_status "Warning: Failed to grant privileges (may already be granted)"
-fi
-
-# Update .env with database credentials
-sed -i "s/DATABASE_URL=.*/DATABASE_URL=postgresql+asyncpg:\/\/$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432\/$POSTGRES_DB/" /opt/vpn-panel/backend/.env
-
-# Set up Python path
-export PYTHONPATH=/opt/vpn-panel/backend:$PYTHONPATH
-cd /opt/vpn-panel/backend
-
-# Install the package in development mode
-print_status "Checking if package is already installed..."
-cd /opt/vpn-panel/backend
-
-# Check if the package is already installed
-if python3 -c "import app" &>/dev/null; then
-    print_status "Package is already installed, skipping installation..."
-else
-    # Debug: List files in backend directory
-    print_status "Contents of /opt/vpn-panel/backend:"
-    ls -la || true
-
-    # Try installing in development mode if package files exist
-    if [ -f "setup.py" ]; then
-        print_status "Found setup.py, checking if installation is needed..."
-        if ! python3 -c "import app" &>/dev/null; then
-            print_status "Installing in development mode..."
-            pip install -e . || {
-                print_status "Warning: Development mode installation failed, trying with --no-deps..."
-                pip install -e . --no-deps || print_status "Warning: Development mode with --no-deps failed"
-            }
-        else
-            print_status "Package is already installed, skipping..."
-        fi
-    elif [ -f "pyproject.toml" ]; then
-        print_status "Found pyproject.toml, checking if installation is needed..."
-        if ! python3 -c "import app" &>/dev/null; then
-            print_status "Installing in development mode..."
-            pip install -e . || {
-                print_status "Warning: Development mode installation failed, trying with --no-deps..."
-                pip install -e . --no-deps || print_status "Warning: Development mode with --no-deps failed"
-            }
-        else
-            print_status "Package is already installed, skipping..."
-        fi
-    else
-        print_status "Warning: No setup.py or pyproject.toml found in /opt/vpn-panel/backend"
-        print_status "Falling back to regular installation..."
-    fi
-fi
-
-# Function to check if a Python package is installed
-is_package_installed() {
-    python3 -c "import $1" 2>/dev/null
-    return $?
-}
-
-# Generate random admin credentials if not set
-if [ -z "$ADMIN_USERNAME" ]; then
-    ADMIN_USERNAME="admin_$(openssl rand -hex 3)"
-    ADMIN_PASSWORD="$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)"
-    export ADMIN_USERNAME ADMIN_PASSWORD
-    
-    # Save credentials to a file
-    mkdir -p /etc/vpn-panel
-    echo "ADMIN_USERNAME=$ADMIN_USERNAME" > /etc/vpn-panel/credentials
-    echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> /etc/vpn-panel/credentials
-    chmod 600 /etc/vpn-panel/credentials
-    
-    print_status "Generated admin username: $ADMIN_USERNAME"
-    print_status "Generated admin password: $ADMIN_PASSWORD"
-    print_status "Credentials saved to /etc/vpn-panel/credentials"
-fi
+print_success "Generated admin username: $ADMIN_USERNAME"
+print_success "Generated admin password: $ADMIN_PASSWORD"
+print_success "Admin email: $EMAIL"
+print_success "Domain: $DOMAIN"
 
 # Generate random panel path if not set
 if [ -z "$PANEL_PATH" ]; then
