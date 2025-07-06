@@ -88,14 +88,21 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
 # Install Celery and ensure it's in PATH
-RUN pip install celery[redis]==5.2.2 && \
-    ln -s /usr/local/bin/celery /usr/bin/celery
+RUN pip install --no-cache-dir celery[redis]==5.2.2 && \
+    ln -sf /usr/local/bin/celery /usr/bin/celery && \
+    ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker && \
+    ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat && \
+    chmod +x /usr/local/bin/celery*
 
 # Set environment variables
 ENV PYTHONPATH=/app/backend:/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/home/appuser/.local/bin:${PATH}" \
+    PATH="/usr/local/bin:${PATH}" \
+    CELERY_BIN="/usr/local/bin/celery" \
+    CELERY_APP="app.worker" \
+    CELERY_WORKER_CONCURRENCY=4 \
+    CELERY_BEAT_SCHEDULE_FILE="/app/celerybeat-schedule" \
     ALEMBIC_CONFIG=/app/alembic.ini
 
 # Create necessary directories and copy scripts

@@ -96,12 +96,42 @@ else
     git pull
 fi
 
+# Create necessary directories
+print_status "Creating necessary directories..."
+mkdir -p /root/vpn-panel/xray
+
+# Create Xray config file
+print_status "Creating Xray configuration..."
+cat > /root/vpn-panel/xray/config.json << 'EOL_XRAY'
+{
+  "log": {
+    "loglevel": "warning",
+    "access": "/var/log/xray/access.log",
+    "error": "/var/log/xray/error.log"
+  },
+  "inbounds": [],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {}
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": []
+  }
+}
+EOL_XRAY
+
+# Set proper permissions
+chmod -R 755 /root/vpn-panel/xray
+
 # Copy .env to the project root
 cp .env .
 
-# Start services
+# Start the services
 print_status "Starting VPN Panel with Docker Compose..."
-cd /root/vpn-panel
+docker-compose --env-file /root/vpn-panel/.env up -d --force-recreate
 
 # Fix Xray network configuration in docker-compose.yml
 cd /root/vpn-panel
