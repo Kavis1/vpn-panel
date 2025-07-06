@@ -90,15 +90,14 @@ COPY --from=builder /app /app
 # Install required packages and ensure they're in PATH
 RUN pip install --no-cache-dir \
     celery[redis]==5.2.2 \
-    uvicorn[standard]==0.22.0 && \
-    # Create symlinks for Celery
+    uvicorn[standard]==0.22.0 gunicorn==20.1.0 && \
+    # Create symlinks for Celery and uvicorn
     ln -sf /usr/local/bin/celery /usr/bin/celery && \
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker && \
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat && \
-    # Create symlink for uvicorn
     ln -sf /usr/local/bin/uvicorn /usr/bin/uvicorn && \
     # Set executable permissions
-    chmod +x /usr/local/bin/celery* /usr/local/bin/uvicorn*
+    chmod +x /usr/local/bin/celery* /usr/local/bin/uvicorn* /usr/local/bin/gunicorn*
 
 # Set environment variables
 ENV PYTHONPATH=/app/backend:/app \
@@ -130,5 +129,5 @@ USER appuser
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Command to run the application using the full path to uvicorn
+CMD ["/usr/local/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
