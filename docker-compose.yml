@@ -25,13 +25,7 @@ services:
     volumes:
       - .:/app
       - /app/venv
-    command: >
-      sh -c "cd /app && 
-             python -m uvicorn backend.app.main:app 
-             --host 0.0.0.0 
-             --port 8000 
-             --workers 2 
-             --log-level info"
+    command: sh -c "cd /app && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
