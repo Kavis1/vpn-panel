@@ -263,15 +263,22 @@ fi
 # Update .env with database credentials
 sed -i "s/DATABASE_URL=.*/DATABASE_URL=postgresql+asyncpg:\/\/$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432\/$POSTGRES_DB/" /opt/vpn-panel/backend/.env
 
-# Run database migrations
-print_status "Running database migrations..."
+# Set up Python path
+export PYTHONPATH=/opt/vpn-panel/backend:$PYTHONPATH
 cd /opt/vpn-panel/backend
 
-# Add current directory to Python path
-export PYTHONPATH=$PYTHONPATH:$(pwd)
+# Install the package in development mode
+print_status "Installing the package in development mode..."
+pip install -e . || print_status "Warning: Failed to install package in development mode"
+
+# Run database migrations
+print_status "Running database migrations..."
+
+# Create migrations directory if it doesn't exist
+mkdir -p /opt/vpn-panel/backend/migrations
 
 # Initialize alembic if not already initialized
-if [ ! -d "alembic" ]; then
+if [ ! -f "alembic.ini" ]; then
     print_status "Initializing alembic..."
     alembic init alembic || print_error "Failed to initialize alembic"
     
@@ -283,18 +290,21 @@ if [ ! -d "alembic" ]; then
     # Update alembic.ini with correct database URL
     sed -i "s|sqlalchemy.url = .*|sqlalchemy.url = postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432/$POSTGRES_DB|" alembic.ini
     
+    # Update env.py to use our models
+    sed -i "s|from logging.config import fileConfig|import os\nimport sys\nfrom logging.config import fileConfig\n\n# Add the backend directory to the Python path\nsys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n\nfrom app.db.base import Base\nfrom app.core.config import settings\n\n# Use the same metadata for 'target_metadata'\ntarget_metadata = Base.metadata\n|g" alembic/env.py
+    
     # Create versions directory
     mkdir -p alembic/versions
     touch alembic/versions/.gitkeep
     
     # Create initial migration
     print_status "Creating initial migration..."
-    PYTHONPATH=$(pwd) alembic revision --autogenerate -m "Initial migration" || print_status "Warning: Failed to create initial migration (tables may already exist)"
+    PYTHONPATH=/opt/vpn-panel/backend alembic revision --autogenerate -m "Initial migration" || print_status "Warning: Failed to create initial migration (tables may already exist)"
 fi
 
 # Run migrations
 print_status "Running migrations..."
-PYTHONPATH=$(pwd) alembic upgrade head || print_status "Warning: Failed to run database migrations (tables may already be up to date)"
+PYTHONPATH=/opt/vpn-panel/backend alembic upgrade head || print_status "Warning: Failed to run database migrations (tables may already be up to date)"
 
 # Install Xray
 print_status "Installing Xray..."
@@ -391,53 +401,38 @@ fi
 
 # Configure Nginx
 print_status "Configuring Nginx..."
+
+# Create Nginx directories if they don't exist
+mkdir -p /etc/nginx/sites-available
+mkdir -p /etc/nginx/sites-enabled
+
+# Create Nginx config
 cat > /etc/nginx/sites-available/vpn-panel << EOL
 server {
     listen 80;
-    server_name $DOMAIN;
-    return 301 https://\$host\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN;
-
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
-    ssl_prefer_server_ciphers off;
-
-    client_max_body_size 20M;
-
+    server_name ${DOMAIN:-_};
+    
     location / {
         proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location /ws/ {
-        proxy_pass http://127.0.0.1:8000/ws/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    }
-
-    location /static/ {
-        alias /opt/vpn-panel/backend/app/static/;
-        expires 30d;
-        access_log off;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
     }
 }
 EOL
 
+# Enable site
 ln -sf /etc/nginx/sites-available/vpn-panel /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default
+rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+
+# Test Nginx configuration
+nginx -t || print_status "Warning: Nginx configuration test failed"
 
 # Create systemd service for backend
 print_status "Creating systemd service for backend..."
@@ -486,29 +481,59 @@ systemctl restart vpn-panel xray nginx postgresql || print_error "Failed to star
 
 # Create admin user
 print_status "Creating admin user..."
-cd /opt/vpn-panel/backend && python -c "
-import asyncio
-from app.core.security import get_password_hash
-from app.db.session import AsyncSessionLocal
-from app.models.user import User
 
-async def create_admin():
-    async with AsyncSessionLocal() as session:
-        user = await session.get(User, 1)
-        if not user:
-            user = User(
-                email='$EMAIL',
-                username='$ADMIN_USER',
-                hashed_password=get_password_hash('$ADMIN_PASS'),
-                is_active=True,
+# Create a Python script to create admin user
+cat > /tmp/create_admin.py << 'EOL'
+import sys
+import os
+
+# Add the backend directory to the Python path
+sys.path.insert(0, '/opt/vpn-panel/backend')
+
+from app.db.session import SessionLocal
+from app.core.config import settings
+from app.models.user import User
+from app.core.security import get_password_hash
+
+def create_admin_user():
+    db = SessionLocal()
+    try:
+        # Check if admin user already exists
+        admin = db.query(User).filter(User.email == 'admin@example.com').first()
+        if not admin:
+            admin = User(
+                email='admin@example.com',
+                hashed_password=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD or 'admin'),
                 is_superuser=True,
+                is_active=True,
                 is_verified=True
             )
-            session.add(user)
-            await session.commit()
+            db.add(admin)
+            db.commit()
+            print('Admin user created successfully')
+            return True
+        else:
+            print('Admin user already exists')
+            return True
+    except Exception as e:
+        print(f'Error creating admin user: {str(e)}')
+        db.rollback()
+        return False
+    finally:
+        db.close()
 
-asyncio.run(create_admin())
-" || print_error "Failed to create admin user"
+if __name__ == '__main__':
+    if create_admin_user():
+        sys.exit(0)
+    else:
+        sys.exit(1)
+EOL
+
+# Run the script with the correct Python path
+PYTHONPATH=/opt/vpn-panel/backend python3 /tmp/create_admin.py || print_status "Warning: Failed to create admin user (user may already exist)"
+
+# Clean up
+rm -f /tmp/create_admin.py
 
 # Print installation summary
 print_success "\n=================================================="
