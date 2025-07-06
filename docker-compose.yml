@@ -48,7 +48,7 @@ services:
     networks:
       - vpn_network
     healthcheck:
-      test: ["CMD", "sh", "-c", "which uvicorn && /usr/local/bin/uvicorn --version"]
+      test: ["CMD", "sh", "-c", "python -m pip show uvicorn && python -c \"import uvicorn; print(uvicorn.__version__)\""]
       interval: 30s
       timeout: 10s
       retries: 3

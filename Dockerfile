@@ -94,17 +94,15 @@ RUN pip install --no-cache-dir \
     celery[redis]==5.2.2 \
     && pip install --no-cache-dir -e . \
     # Create necessary symlinks
-    && ln -sf /usr/local/bin/uvicorn /usr/local/bin/uvicorn \
-    && ln -sf /usr/local/bin/celery /usr/local/bin/celery \
     && ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker \
     && ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat \
-    # Set executable permissions
-    && chmod +x /usr/local/bin/uvicorn /usr/local/bin/celery* /usr/local/bin/gunicorn* \
-    # Verify uvicorn is in PATH and executable
-    && which uvicorn \
-    && ls -la /usr/local/bin/uvicorn \
+    # Verify uvicorn is installed and in PATH
+    && python -m pip show uvicorn \
+    && python -c "import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')" \
     && echo 'export PATH="/usr/local/bin:$PATH"' >> /root/.bashrc \
-    && echo 'export PATH="/usr/local/bin:$PATH"' >> /etc/profile
+    && echo 'export PATH="/usr/local/bin:$PATH"' >> /etc/profile \
+    && echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.profile \
+    && chmod +x /usr/local/bin/*
 
 # Set environment variables
 ENV PYTHONPATH=/app/backend:/app \
@@ -136,5 +134,5 @@ USER appuser
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Command to run the application with full path
-CMD ["/usr/local/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Command to run the application using python -m
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
