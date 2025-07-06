@@ -182,27 +182,12 @@ services:
     networks:
       - vpn_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
-    command: >
-      sh -c "
-      echo '===== Starting VPN Panel Backend =====' &&
-      echo 'Python version:' && python --version &&
-      echo 'Pip version:' && pip --version &&
-      echo 'Uvicorn version:' && python -c \"import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')\" && \
-      echo 'Waiting for PostgreSQL...' &&
-      until pg_isready -h db -p 5432 -U ${POSTGRES_USER} -d ${POSTGRES_DB}; do
-        echo 'Waiting for PostgreSQL...';
-        sleep 2;
-      done &&
-      echo 'Running migrations...' &&
-      alembic upgrade head &&
-      echo 'Starting Uvicorn server...' &&
-      python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info
-      "
+    command: sh -c "cd /app && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info"
 
 networks:
   vpn_network:
