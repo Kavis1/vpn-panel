@@ -1,18 +1,16 @@
-# Build stage
-FROM python:3.10-slim as builder
+# Base image
+FROM python:3.10-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=off \
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Set work directory
@@ -20,19 +18,15 @@ WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
 COPY pyproject.toml .
-COPY requirements*.txt ./
+COPY requirements.txt .
 
-# Install dependencies
+# Install Python dependencies
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -e . && \
-    pip install --no-cache-dir uvicorn[standard] gunicorn
+    pip install uvicorn gunicorn && \
+    pip install -e .
 
 # Verify installations
-RUN echo "===== Verifying installations =====" && \
-    echo "Python version: $(python --version)" && \
-    echo "Pip version: $(pip --version)" && \
-    echo "Uvicorn path: $(which uvicorn)" && \
-    python -c "import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')"
+RUN python -c "import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')"
 
 # Copy the rest of the application
 COPY . .
