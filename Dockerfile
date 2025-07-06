@@ -25,31 +25,33 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 # Create builder stage
 FROM base AS builder
 
-# Install poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
+# Copy only requirements to cache them in docker layer
+COPY poetry.lock pyproject.toml ./
 
-# Set work directory
-WORKDIR $PYSETUP_PATH
-COPY ./pyproject.toml ./poetry.lock* ./
+# Install dependencies
+RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
+RUN pip install --user -r requirements.txt
 
-# Install Python dependencies using poetry
-RUN poetry install --no-root
+# Runtime stage
+FROM python:3.9-slim
 
-# Create production stage
-FROM base AS production
-
-# Copy poetry and pysetup from builder stage
-COPY --from=builder $POETRY_HOME $POETRY_HOME
-COPY --from=builder $PYSETUP_PATH $PYSETUP_PATH
-
-# Set work directory
 WORKDIR /app
-COPY . /app
 
-# Install Python dependencies
-RUN pip install -e .
+# Copy only necessary files from builder
+COPY --from=builder /root/.local /root/.local
+COPY . .
 
-# Expose port
+# Make sure scripts in .local are usable
+ENV PATH=/root/.local/bin:$PATH
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Create a non-root user
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose the port the app runs on
 EXPOSE 8000
 
 # Command to run the application
