@@ -269,7 +269,16 @@ cd /opt/vpn-panel/backend
 
 # Install the package in development mode
 print_status "Installing the package in development mode..."
-pip install -e . || print_status "Warning: Failed to install package in development mode"
+cd /opt/vpn-panel/backend
+pip install -e . || {
+    print_status "Warning: Failed to install package in development mode, trying with --no-deps..."
+    pip install -e . --no-deps || print_error "Failed to install package"
+}
+
+# Install requirements separately
+if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt || print_error "Failed to install requirements"
+fi
 
 # Run database migrations
 print_status "Running database migrations..."
@@ -304,7 +313,9 @@ fi
 
 # Run migrations
 print_status "Running migrations..."
-PYTHONPATH=/opt/vpn-panel/backend alembic upgrade head || print_status "Warning: Failed to run database migrations (tables may already be up to date)"
+cd /opt/vpn-panel/backend
+export PYTHONPATH=$PYTHONPATH:$(pwd)
+alembic upgrade head || print_status "Warning: Failed to run database migrations (tables may already be up to date)"
 
 # Install Xray
 print_status "Installing Xray..."
@@ -483,12 +494,12 @@ systemctl restart vpn-panel xray nginx postgresql || print_error "Failed to star
 print_status "Creating admin user..."
 
 # Create a Python script to create admin user
-cat > /tmp/create_admin.py << 'EOL'
+cat > /opt/vpn-panel/backend/create_admin.py << 'EOL'
 import sys
 import os
 
-# Add the backend directory to the Python path
-sys.path.insert(0, '/opt/vpn-panel/backend')
+# Add the current directory to the Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.db.session import SessionLocal
 from app.core.config import settings
@@ -517,6 +528,8 @@ def create_admin_user():
             return True
     except Exception as e:
         print(f'Error creating admin user: {str(e)}')
+        import traceback
+        traceback.print_exc()
         db.rollback()
         return False
     finally:
@@ -530,10 +543,12 @@ if __name__ == '__main__':
 EOL
 
 # Run the script with the correct Python path
-PYTHONPATH=/opt/vpn-panel/backend python3 /tmp/create_admin.py || print_status "Warning: Failed to create admin user (user may already exist)"
+cd /opt/vpn-panel/backend
+export PYTHONPATH=$PYTHONPATH:$(pwd)
+python create_admin.py || print_status "Warning: Failed to create admin user (user may already exist)"
 
 # Clean up
-rm -f /tmp/create_admin.py
+rm -f /opt/vpn-panel/backend/create_admin.py
 
 # Print installation summary
 print_success "\n=================================================="
