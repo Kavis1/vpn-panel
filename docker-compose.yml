@@ -37,28 +37,14 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - .:/app
       - /app/venv
     command: >
-      sh -c "
-      echo '===== Starting VPN Panel Backend =====' &&
-      echo 'Python version:' && python --version &&
-      echo 'Pip version:' && pip --version &&
-      echo 'Uvicorn version:' && python -c \"import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')\" && \
-      echo 'Waiting for PostgreSQL...' &&
-      until pg_isready -h db -p 5432 -U ${POSTGRES_USER} -d ${POSTGRES_DB}; do
-        echo 'Waiting for PostgreSQL...';
-        sleep 2;
-      done &&
-      echo 'Running migrations...' &&
-      alembic upgrade head &&
-      echo 'Starting Uvicorn server...' &&
-      python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info
-      "
+      sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info"
     healthcheck:
-      test: ["CMD", "sh", "-c", "python -m pip show uvicorn && python -c \"import uvicorn; print(uvicorn.__version__)\""]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -105,9 +91,26 @@ services:
     environment:
       - TZ=UTC
     command: >
-      sh -c "mkdir -p /etc/xray && \
-      [ ! -f /etc/xray/config.json ] && \
-      echo '{\n        \"log\": {\n          \"loglevel\": \"warning\",\n          \"access\": \"/var/log/xray/access.log\",\n          \"error\": \"/var/log/xray/error.log\"\n        },\n        \"inbounds\": [],\n        \"outbounds\": [\n          {\n            \"protocol\": \"freedom\",\n            \"settings\": {}\n          }\n        ],\n        \"routing\": {\n          \"domainStrategy\": \"AsIs\",\n          \"rules\": []\n        }\n      }' > /etc/xray/config.json; \
+      sh -c "mkdir -p /etc/xray &&
+      [ ! -f /etc/xray/config.json ] &&
+      echo '{
+        \"log\": {
+          \"loglevel\": \"warning\",
+          \"access\": \"/var/log/xray/access.log\",
+          \"error\": \"/var/log/xray/error.log\"
+        },
+        \"inbounds\": [],
+        \"outbounds\": [
+          {
+            \"protocol\": \"freedom\",
+            \"settings\": {}
+          }
+        ],
+        \"routing\": {
+          \"domainStrategy\": \"AsIs\",
+          \"rules\": []
+        }
+      }' > /etc/xray/config.json;
       /usr/bin/xray -config /etc/xray/config.json"
     depends_on:
       - db
