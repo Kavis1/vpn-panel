@@ -27,6 +27,10 @@ if [ "$(id -u)" -ne 0 ]; then
     print_error "This script must be run as root"
 fi
 
+# Auto-generate admin credentials
+ADMIN_USERNAME="admin_$(openssl rand -hex 3)"
+ADMIN_PASSWORD="$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)"
+
 # Get user input
 read -p "Enter your domain name (or press Enter to use IP address): " DOMAIN
 read -p "Enter admin email (for Let's Encrypt): " EMAIL
@@ -661,8 +665,18 @@ print_success "\n=================================================="
 print_success "  VPN Panel Installation Complete"
 print_success "=================================================="
 print_success "\nAccess the VPN Panel at: https://$(curl -s ifconfig.me)$PANEL_PATH"
-print_success "Admin username: $ADMIN_USERNAME"
-print_success "Admin password: $ADMIN_PASSWORD"
+print_success "Generated admin username: $ADMIN_USERNAME"
+print_success "Generated admin password: $ADMIN_PASSWORD"
+print_success "Admin email: $EMAIL"
+print_success "Domain: $DOMAIN"
+
+# Save credentials to a file
+mkdir -p /etc/vpn-panel
+echo "ADMIN_USERNAME=$ADMIN_USERNAME" > /etc/vpn-panel/credentials
+echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> /etc/vpn-panel/credentials
+echo "ADMIN_EMAIL=$EMAIL" >> /etc/vpn-panel/credentials
+echo "DOMAIN=$DOMAIN" >> /etc/vpn-panel/credentials
+chmod 600 /etc/vpn-panel/credentials
 print_success "\nIMPORTANT: Please save these credentials in a secure location!"
 print_success "Credentials are also saved to: /etc/vpn-panel/credentials"
 print_success "\nTo start the VPN Panel service:"
