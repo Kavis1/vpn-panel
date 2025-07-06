@@ -111,9 +111,19 @@ print_status "Setting up VPN Panel repository..."
 mkdir -p /opt/vpn-panel/backend
 cd /opt/vpn-panel/backend
 
-# Clone fresh copy
+# Clone repository with full history
 print_status "Cloning repository..."
-git clone https://github.com/Kavis1/vpn-panel.git . || print_error "Failed to clone repository"
+git clone --depth 1 --no-single-branch https://github.com/Kavis1/vpn-panel.git . || print_error "Failed to clone repository"
+
+# Ensure we have all files
+print_status "Ensuring all files are checked out..."
+git fetch --unshallow || true
+git fetch --all
+git reset --hard origin/main
+
+# Debug: List files after clone
+print_status "Contents after git clone:"
+ls -la || true
 
 # Restore backup if exists
 if [ -d "$BACKUP_DIR" ]; then
@@ -270,14 +280,35 @@ cd /opt/vpn-panel/backend
 # Install the package in development mode
 print_status "Installing the package in development mode..."
 cd /opt/vpn-panel/backend
-pip install -e . || {
-    print_status "Warning: Failed to install package in development mode, trying with --no-deps..."
-    pip install -e . --no-deps || print_error "Failed to install package"
-}
 
-# Install requirements separately
+# Debug: List files in backend directory
+print_status "Contents of /opt/vpn-panel/backend:"
+ls -la || true
+
+# First try installing in development mode
+if [ -f "setup.py" ]; then
+    print_status "Found setup.py, installing in development mode..."
+    pip install -e . || {
+        print_status "Warning: Development mode installation failed, trying with --no-deps..."
+        pip install -e . --no-deps || print_status "Warning: Development mode with --no-deps failed"
+    }
+elif [ -f "pyproject.toml" ]; then
+    print_status "Found pyproject.toml, installing in development mode..."
+    pip install -e . || {
+        print_status "Warning: Development mode installation failed, trying with --no-deps..."
+        pip install -e . --no-deps || print_status "Warning: Development mode with --no-deps failed"
+    }
+else
+    print_status "Warning: No setup.py or pyproject.toml found in /opt/vpn-panel/backend"
+    print_status "Falling back to regular installation..."
+fi
+
+# Install requirements directly from requirements.txt if it exists
 if [ -f "requirements.txt" ]; then
+    print_status "Installing requirements from requirements.txt..."
     pip install -r requirements.txt || print_error "Failed to install requirements"
+else
+    print_status "No requirements.txt found, skipping requirements installation"
 fi
 
 # Run database migrations
