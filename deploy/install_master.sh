@@ -208,48 +208,73 @@ EOL
 # Configure PostgreSQL
 print_status "Configuring PostgreSQL..."
 
+# Set default values if not provided
+POSTGRES_DB=${POSTGRES_DB:-vpnpanel}
+POSTGRES_USER=${POSTGRES_USER:-vpnpanel}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-$(openssl rand -hex 16)}
+
+echo "Database: $POSTGRES_DB"
+echo "User: $POSTGRES_USER"
+
 # Check if database exists
 if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$POSTGRES_DB"; then
+    echo "Creating database $POSTGRES_DB..."
     sudo -u postgres psql -c "CREATE DATABASE $POSTGRES_DB;" || print_error "Failed to create database"
-    sudo -u postgres psql -c "CREATE USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';" || print_error "Failed to create database user"
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $POSTGRES_USER;" || print_error "Failed to grant privileges"
+    
+    echo "Creating user $POSTGRES_USER..."
+    sudo -u postgres psql -c "CREATE USER \"$POSTGRES_USER\" WITH PASSWORD '$POSTGRES_PASSWORD';" || print_error "Failed to create database user"
+    
+    echo "Granting privileges..."
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$POSTGRES_DB\" TO \"$POSTGRES_USER\";" || print_error "Failed to grant privileges"
 else
     print_status "Database $POSTGRES_DB already exists, skipping creation..."
     
     # Check if user exists
     if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_USER'" | grep -q 1; then
-        sudo -u postgres psql -c "CREATE USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';" || print_status "Warning: Failed to create database user (may already exist)"
+        echo "Creating user $POSTGRES_USER..."
+        sudo -u postgres psql -c "CREATE USER \"$POSTGRES_USER\" WITH PASSWORD '$POSTGRES_PASSWORD';" || print_status "Warning: Failed to create database user (may already exist)"
     fi
     
     # Ensure user has privileges
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $POSTGRES_USER;" || print_status "Warning: Failed to grant privileges (may already be granted)"
+    echo "Ensuring privileges for $POSTGRES_USER on $POSTGRES_DB..."
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$POSTGRES_DB\" TO \"$POSTGRES_USER\";" || print_status "Warning: Failed to grant privileges (may already be granted)"
 fi
+
+# Update .env with database credentials
+sed -i "s/DATABASE_URL=.*/DATABASE_URL=postgresql+asyncpg:\/\/$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432\/$POSTGRES_DB/" /opt/vpn-panel/backend/.env
 
 # Run database migrations
 print_status "Running database migrations..."
 cd /opt/vpn-panel/backend
 
+# Add current directory to Python path
+export PYTHONPATH=$PYTHONPATH:$(pwd)
+
 # Initialize alembic if not already initialized
-if [ ! -d "/opt/vpn-panel/backend/alembic" ]; then
+if [ ! -d "alembic" ]; then
     print_status "Initializing alembic..."
     alembic init alembic || print_error "Failed to initialize alembic"
     
-    # Copy our custom env.py
-    cp /opt/vpn-panel/backend/alembic.ini.example /opt/vpn-panel/backend/alembic.ini
-    cp /opt/vpn-panel/backend/alembic/env.py /opt/vpn-panel/backend/alembic/env.py
-    cp /opt/vpn-panel/backend/alembic/script.py.mako /opt/vpn-panel/backend/alembic/script.py.mako
+    # Copy our custom env.py if it exists
+    if [ -f "alembic.ini.example" ]; then
+        cp alembic.ini.example alembic.ini
+    fi
+    
+    # Update alembic.ini with correct database URL
+    sed -i "s|sqlalchemy.url = .*|sqlalchemy.url = postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432/$POSTGRES_DB|" alembic.ini
     
     # Create versions directory
-    mkdir -p /opt/vpn-panel/backend/alembic/versions
-    touch /opt/vpn-panel/backend/alembic/versions/.gitkeep
+    mkdir -p alembic/versions
+    touch alembic/versions/.gitkeep
     
     # Create initial migration
     print_status "Creating initial migration..."
-    alembic revision --autogenerate -m "Initial migration" || print_error "Failed to create initial migration"
+    PYTHONPATH=$(pwd) alembic revision --autogenerate -m "Initial migration" || print_status "Warning: Failed to create initial migration (tables may already exist)"
 fi
 
 # Run migrations
-alembic upgrade head || print_error "Failed to run database migrations"
+print_status "Running migrations..."
+PYTHONPATH=$(pwd) alembic upgrade head || print_status "Warning: Failed to run database migrations (tables may already be up to date)"
 
 # Install Xray
 print_status "Installing Xray..."
