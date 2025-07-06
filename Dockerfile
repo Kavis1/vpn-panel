@@ -87,24 +87,25 @@ COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
-# Install Python packages directly with pip (bypassing Poetry for core deps)
+# Install Python packages directly with pip
 RUN pip install --no-cache-dir --upgrade pip && \
-    # Install uvicorn first with explicit path
+    # Install uvicorn and other core dependencies first
     pip install --no-cache-dir \
-    uvicorn[standard]==0.22.0 && \
-    # Install other dependencies
-    pip install --no-cache-dir \
-    gunicorn==20.1.0 \
-    celery[redis]==5.2.2 && \
+        uvicorn[standard]==0.22.0 \
+        gunicorn==20.1.0 \
+        celery[redis]==5.2.2 && \
     # Install the project in development mode
     pip install --no-cache-dir -e . && \
     # Create necessary symlinks
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker && \
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat && \
-    # Verify uvicorn installation
-    echo "===== Verifying uvicorn installation =====" && \
+    # Verify installations
+    echo "===== Verifying installations =====" && \
+    echo "Python version:" && python --version && \
+    echo "Pip version:" && pip --version && \
+    echo "Uvicorn info:" && \
+    which uvicorn && \
     ls -la /usr/local/bin/uvicorn* && \
-    which uvicorn || echo "uvicorn not found in PATH" && \
     python -m pip show uvicorn && \
     python -c "import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')" && \
     # Set up environment variables
@@ -144,5 +145,5 @@ USER appuser
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Command to run the application using python -m
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Command to run the application
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
