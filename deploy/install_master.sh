@@ -92,10 +92,32 @@ if [ -f "requirements.txt" ]; then
     
     # Install missing packages only
     while IFS= read -r pkg; do
+        # Skip empty lines and comments
+        if [ -z "$pkg" ] || [[ "$pkg" == "#"* ]]; then
+            continue
+        fi
+        
         # Extract package name (handling different requirement formats)
         pkg_name=$(echo "$pkg" | grep -o '^[^<>=!; ]*' | tr '[:upper:]' '[:lower:]')
         
-        # Skip empty lines and comments
+        # Skip if package name is empty
+        if [ -z "$pkg_name" ]; then
+            continue
+        fi
+        
+        # Check if package is already installed
+        if ! pip show "$pkg_name" &>/dev/null; then
+            print_status "Installing $pkg_name..."
+            pip install --no-cache-dir "$pkg" || print_status "Warning: Failed to install $pkg_name"
+        fi
+    done < "$TEMP_DIR/requirements_compiled.txt"
+    
+    # Clean up
+    rm -rf "$TEMP_DIR"
+else
+    print_status "No requirements.txt found, skipping requirements installation"
+fi
+
 # Create and activate virtual environment
 if [ ! -d "/opt/vpn-panel/backend/venv" ]; then
     print_status "Creating Python virtual environment..."
