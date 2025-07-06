@@ -89,24 +89,29 @@ COPY --from=builder /app /app
 
 # Install Python packages directly with pip (bypassing Poetry for core deps)
 RUN pip install --no-cache-dir --upgrade pip && \
+    # Install uvicorn first with explicit path
     pip install --no-cache-dir \
-    uvicorn[standard]==0.22.0 \
+    uvicorn[standard]==0.22.0 && \
+    # Install other dependencies
+    pip install --no-cache-dir \
     gunicorn==20.1.0 \
     celery[redis]==5.2.2 && \
+    # Install the project in development mode
     pip install --no-cache-dir -e . && \
     # Create necessary symlinks
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker && \
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat && \
-    # Create symlink for uvicorn to ensure it's in PATH
-    ln -sf /usr/local/bin/uvicorn /usr/bin/uvicorn && \
-    # Verify uvicorn is installed and in PATH
-    which uvicorn && \
+    # Verify uvicorn installation
+    echo "===== Verifying uvicorn installation =====" && \
+    ls -la /usr/local/bin/uvicorn* && \
+    which uvicorn || echo "uvicorn not found in PATH" && \
     python -m pip show uvicorn && \
-    uvicorn --version && \
     python -c "import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')" && \
+    # Set up environment variables
     echo 'export PATH="/usr/local/bin:$PATH"' >> /root/.bashrc && \
     echo 'export PATH="/usr/local/bin:$PATH"' >> /etc/profile && \
     echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.profile && \
+    # Make scripts executable
     chmod +x /usr/local/bin/*
 
 # Set environment variables

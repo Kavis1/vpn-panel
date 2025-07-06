@@ -91,13 +91,127 @@ SECRET_KEY=${SECRET_KEY}
 DOMAIN=${DOMAIN}
 TRAEFIK_ACME_EMAIL=${EMAIL}
 
+# Uvicorn configuration
+UVICORN_HOST=0.0.0.0
+UVICORN_PORT=8000
+UVICORN_WORKERS=4
+UVICORN_RELOAD=false
+UVICORN_LOG_LEVEL=info
+
 # Xray
 XRAY_API_PORT=10085
 XRAY_API_TOKEN=$(openssl rand -hex 32)
+
+# Path configuration
+PYTHONPATH=/app
+PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Ensure uvicorn is in PATH
+export PATH="$PATH:/root/.local/bin"
 EOL
 
 # Set permissions
 chmod 600 /root/vpn-panel/.env
+
+# Create docker-compose.yml
+cat > /root/vpn-panel/docker-compose.yml << 'EOL'
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13-alpine
+    container_name: vpn-panel-db
+    restart: always
+    env_file: .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vpn_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: vpn-panel-redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-your_redis_password}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vpn_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vpn-panel-backend
+    restart: always
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-your_redis_password}@redis:6379/0
+      - PYTHONPATH=/app
+      - PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8000
+      - UVICORN_WORKERS=4
+      - UVICORN_RELOAD=false
+      - UVICORN_LOG_LEVEL=info
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/venv
+    networks:
+      - vpn_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    command: >
+      sh -c "
+      echo '===== Starting VPN Panel Backend =====' &&
+      echo 'Python version:' && python --version &&
+      echo 'Pip version:' && pip --version &&
+      echo 'Uvicorn version:' && python -c \"import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')\" && \
+      echo 'Waiting for PostgreSQL...' &&
+      until pg_isready -h db -p 5432 -U ${POSTGRES_USER} -d ${POSTGRES_DB}; do
+        echo 'Waiting for PostgreSQL...';
+        sleep 2;
+      done &&
+      echo 'Running migrations...' &&
+      alembic upgrade head &&
+      echo 'Starting Uvicorn server...' &&
+      python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info
+      "
+
+networks:
+  vpn_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+EOL
 
 # Clone the repository if not already present
 if [ ! -d "vpn-panel" ]; then

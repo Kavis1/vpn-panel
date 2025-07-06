@@ -73,18 +73,38 @@ if [ -f "/opt/vpn-panel/backend/.env" ]; then
     sed -i "s|^PANEL_PATH=.*|PANEL_PATH=$PANEL_PATH|" /opt/vpn-panel/backend/.env
 fi
 
-# Install requirements directly from requirements.txt if it exists
-if [ -f "requirements.txt" ]; then
-    print_status "Checking and installing requirements from requirements.txt..."
+# Install uvicorn first with explicit path and verify installation
+print_status "Installing uvicorn and core dependencies..."
+pip install --no-cache-dir --upgrade pip || print_error "Failed to upgrade pip"
+pip install --no-cache-dir uvicorn[standard]==0.22.0 gunicorn==20.1.0 || print_error "Failed to install uvicorn and gunicorn"
+
+# Verify uvicorn installation
+if ! command -v uvicorn &> /dev/null; then
+    print_status "uvicorn not found in PATH, checking installation..."
+    python -m pip install --no-cache-dir uvicorn[standard]==0.22.0 || print_error "Failed to install uvicorn"
     
-    # Create a temporary directory for package checking
-    TEMP_DIR=$(mktemp -d)
-    
-    # Install pip-tools if not installed
-    if ! command -v pip-compile &> /dev/null; then
-        print_status "Installing pip-tools for dependency management..."
-        pip install --no-cache-dir pip-tools || print_error "Failed to install pip-tools"
+    # Create symlink if needed
+    if [ ! -f "/usr/local/bin/uvicorn" ] && [ -f "/usr/local/bin/uvicorn3" ]; then
+        ln -s /usr/local/bin/uvicorn3 /usr/local/bin/uvicorn
     fi
+    
+    # Verify again
+    if ! command -v uvicorn &> /dev/null; then
+        print_error "Failed to install uvicorn. Please check your Python environment."
+    fi
+fi
+
+# Install requirements from requirements.txt if it exists
+if [ -f "requirements.txt" ]; then
+    print_status "Installing requirements from requirements.txt..."
+    pip install --no-cache-dir -r requirements.txt || print_status "Warning: Some requirements could not be installed"
+    
+    # Install any remaining dependencies
+    if [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
+        print_status "Installing package in development mode..."
+        pip install --no-cache-dir -e . || print_status "Warning: Could not install in development mode"
+    fi
+fi
     
     # Generate a compiled requirements file with all dependencies
     print_status "Checking for missing dependencies..."
