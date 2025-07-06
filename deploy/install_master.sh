@@ -96,23 +96,12 @@ if [ -f "requirements.txt" ]; then
         pkg_name=$(echo "$pkg" | grep -o '^[^<>=!; ]*' | tr '[:upper:]' '[:lower:]')
         
         # Skip empty lines and comments
-        [ -z "$pkg_name" ] && continue
-        [[ "$pkg_name" == "#"* ]] && continue
-        
-        # Check if package is already installed
-        if ! is_package_installed "$pkg_name"; then
-            print_status "Installing missing package: $pkg_name"
-            pip install --no-cache-dir "$pkg" || print_status "Warning: Failed to install $pkg"
-        else
-            print_status "Package already installed: $pkg_name"
-        fi
-    done < "$TEMP_DIR/requirements_compiled.txt"
-    
-    # Clean up
-    rm -rf "$TEMP_DIR"
-else
-    print_status "No requirements.txt found, skipping requirements installation"
-fi
+# Install core Python dependencies if not already installed
+print_status "Installing core Python dependencies..."
+pip install --upgrade pip || print_status "Warning: Failed to upgrade pip"
+
+# Install required packages for database and migrations
+pip install alembic psycopg2-binary sqlalchemy || print_error "Failed to install database dependencies"
 
 # Run database migrations
 print_status "Running database migrations..."
@@ -123,7 +112,10 @@ mkdir -p /opt/vpn-panel/backend/migrations
 # Initialize alembic if not already initialized
 if [ ! -f "alembic.ini" ]; then
     print_status "Initializing alembic..."
-    alembic init alembic || print_error "Failed to initialize alembic"
+    PYTHONPATH=$PYTHONPATH:. alembic init alembic || {
+        print_status "Trying alternative approach to initialize alembic..."
+        python -m alembic init alembic || print_error "Failed to initialize alembic"
+    }
     
     # Copy our custom env.py if it exists
     if [ -f "alembic.ini.example" ]; then
@@ -149,7 +141,24 @@ fi
 print_status "Running migrations..."
 cd /opt/vpn-panel/backend
 export PYTHONPATH=$PYTHONPATH:$(pwd)
-alembic upgrade head || print_status "Warning: Failed to run database migrations (tables may already be up to date)"
+
+# Try multiple approaches to run migrations
+if ! PYTHONPATH=$PYTHONPATH:. alembic upgrade head; then
+    print_status "Standard alembic command failed, trying alternative approaches..."
+    
+    # Try with python -m alembic
+    if ! PYTHONPATH=$PYTHONPATH:. python -m alembic upgrade head; then
+        print_status "Second attempt failed, trying with full path..."
+        
+        # Try with full path to alembic
+        if [ -f "/opt/vpn-panel/backend/venv/bin/alembic" ]; then
+            /opt/vpn-panel/backend/venv/bin/alembic upgrade head || 
+            print_error "Failed to run database migrations after multiple attempts"
+        else
+            print_error "Alembic executable not found in venv/bin/"
+        fi
+    fi
+fi
 
 # Install Xray
 print_status "Installing Xray..."
