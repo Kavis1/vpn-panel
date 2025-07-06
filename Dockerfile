@@ -87,6 +87,10 @@ COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
+# Install Celery and ensure it's in PATH
+RUN pip install celery[redis]==5.2.2 && \
+    ln -s /usr/local/bin/celery /usr/bin/celery
+
 # Set environment variables
 ENV PYTHONPATH=/app/backend:/app \
     PYTHONDONTWRITEBYTECODE=1 \
