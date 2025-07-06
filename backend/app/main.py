@@ -4,11 +4,15 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import uvicorn
 import logging
+import os
 from typing import Optional
 
 # Настройка логгера
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Импортируем API роутеры
+from app.api.api import api_router
 
 def create_application() -> FastAPI:
     # Создаем экземпляр приложения
@@ -24,7 +28,10 @@ def create_application() -> FastAPI:
     # Настройка CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # В продакшене заменить на конкретные домены
+        allow_origins=os.getenv(
+            "CORS_ORIGINS", 
+            ["http://localhost", "http://localhost:80", "http://localhost:3000"]
+        ),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -35,13 +42,18 @@ def create_application() -> FastAPI:
     static_path.mkdir(exist_ok=True, parents=True)
     app.mount("/static", StaticFiles(directory=static_path), name="static")
 
+    # Подключаем API роутеры
+    app.include_router(api_router, prefix="/api")
+
     # Тестовый эндпоинт для проверки работоспособности
     @app.get("/")
     async def root():
         return {
             "message": "Добро пожаловать в VPN Panel API",
             "status": "running",
-            "version": "0.1.0"
+            "version": "0.1.0",
+            "docs": "/api/docs",
+            "openapi": "/api/openapi.json"
         }
     
     # Эндпоинт для проверки здоровья
