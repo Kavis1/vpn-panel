@@ -87,17 +87,22 @@ COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
-# Install required packages and ensure they're in PATH
+# Install Python packages directly with pip (bypassing Poetry for core deps)
 RUN pip install --no-cache-dir \
+    uvicorn[standard]==0.22.0 \
+    gunicorn==20.1.0 \
     celery[redis]==5.2.2 \
-    uvicorn[standard]==0.22.0 gunicorn==20.1.0 && \
-    # Create symlinks for Celery and uvicorn
-    ln -sf /usr/local/bin/celery /usr/bin/celery && \
-    ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker && \
-    ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat && \
-    ln -sf /usr/local/bin/uvicorn /usr/bin/uvicorn && \
+    && pip install --no-cache-dir -e . \
+    # Create necessary symlinks
+    && ln -sf /usr/local/bin/uvicorn /usr/bin/uvicorn \
+    && ln -sf /usr/local/bin/celery /usr/bin/celery \
+    && ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker \
+    && ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat \
     # Set executable permissions
-    chmod +x /usr/local/bin/celery* /usr/local/bin/uvicorn* /usr/local/bin/gunicorn*
+    && chmod +x /usr/local/bin/uvicorn /usr/local/bin/celery* /usr/local/bin/gunicorn* \
+    # Verify uvicorn is in PATH and executable
+    && which uvicorn \
+    && ls -la /usr/local/bin/uvicorn
 
 # Set environment variables
 ENV PYTHONPATH=/app/backend:/app \
@@ -129,5 +134,6 @@ USER appuser
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Command to run the application using the full path to uvicorn
-CMD ["/usr/local/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Command to run the application
+# Using shell form to ensure PATH is properly set
+CMD uvicorn app.main:app --host 0.0.0.0 --port 8000
