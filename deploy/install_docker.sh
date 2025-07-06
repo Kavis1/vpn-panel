@@ -64,13 +64,13 @@ POSTGRES_PASSWORD=$(openssl rand -base64 32)
 SECRET_KEY=$(openssl rand -hex 32)
 ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d '=+/' | cut -c1-16)
 
-# Create .env file
-print_status "Creating .env file..."
-cat > .env << EOL
+# Create .env file directly in the project directory
+mkdir -p /root/vpn-panel
+cat > /root/vpn-panel/.env << EOL
 # Database
-POSTGRES_USER=${POSTGRES_USER}
+POSTGRES_USER=postgres
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-POSTGRES_DB=${POSTGRES_DB}
+POSTGRES_DB=vpn_panel
 
 # App
 SECRET_KEY=${SECRET_KEY}
@@ -78,13 +78,12 @@ DOMAIN=${DOMAIN}
 TRAEFIK_ACME_EMAIL=${EMAIL}
 
 # Xray
-XRAY_API_PORT=${XRAY_API_PORT}
-XRAY_API_TOKEN=${XRAY_API_TOKEN}
+XRAY_API_PORT=10085
+XRAY_API_TOKEN=$(openssl rand -hex 32)
 EOL
 
-# Also create .env in the project directory
-mkdir -p /root/vpn-panel
-cp .env /root/vpn-panel/.env
+# Set permissions
+chmod 600 /root/vpn-panel/.env
 
 # Clone the repository if not already present
 if [ ! -d "vpn-panel" ]; then
@@ -105,12 +104,28 @@ print_status "Starting VPN Panel with Docker Compose..."
 cd /root/vpn-panel
 
 # Fix Xray network configuration in docker-compose.yml
-sed -i 's/network_mode: host//g' docker-compose.yml
-sed -i 's/networks:/  xray:\n    networks:\n      - vpn_network\n\nnetworks:/' docker-compose.yml
+cd /root/vpn-panel
+if grep -q "network_mode: host" docker-compose.yml; then
+    sed -i 's/network_mode: host//g' docker-compose.yml
+fi
+
+if ! grep -q "xray:" docker-compose.yml; then
+    sed -i 's/networks:/  xray:\n    networks:\n      - vpn_network\n\nnetworks:/' docker-compose.yml
+fi
 
 # Start services with environment file
-if ! docker-compose --env-file /root/vpn-panel/.env up -d; then
+cd /root/vpn-panel
+if ! docker-compose --env-file .env up -d; then
     print_error "Failed to start VPN Panel. Please check the logs with: docker-compose logs"
+    
+    # Show container status for debugging
+    echo -e "\n[DEBUG] Current container status:"
+    docker-compose ps
+    
+    # Show last 20 lines of logs for each container
+    echo -e "\n[DEBUG] Last 20 lines of logs:"
+    docker-compose logs --tail=20
+    
     exit 1
 fi
 
