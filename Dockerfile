@@ -51,15 +51,20 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
 # Set environment variables
-ENV PYTHONPATH=/app \
+ENV PYTHONPATH=/app/backend:/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/home/appuser/.local/bin:${PATH}"
+    PATH="/home/appuser/.local/bin:${PATH}" \
+    ALEMBIC_CONFIG=/app/alembic.ini
 
-# Create necessary directories
-RUN mkdir -p /app/static /app/media /app/logs \
+# Create necessary directories and copy scripts
+RUN mkdir -p /app/static /app/media /app/logs /app/scripts \
     && chown -R appuser:appuser /app \
     && chmod -R 755 /app/static /app/media /app/logs
+
+# Copy scripts and make them executable
+COPY scripts/* /app/scripts/
+RUN chmod +x /app/scripts/*.sh
 
 # Switch to non-root user
 USER appuser

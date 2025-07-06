@@ -96,28 +96,64 @@ EOL
 
 print_success ".env file created with secure credentials"
 
+# Clone the repository if not already present
+if [ ! -d "vpn-panel" ]; then
+    print_status "Cloning VPN Panel repository..."
+    git clone https://github.com/Kavis1/vpn-panel.git
+    cd vpn-panel
+else
+    print_status "Updating existing VPN Panel installation..."
+    cd vpn-panel
+    git pull
+fi
+
+# Copy .env to the project root
+cp .env .
+
 # Pull and start services
 print_status "Starting VPN Panel with Docker Compose..."
-docker-compose up -d --build
+docker-compose -f docker-compose.yml up -d --build
+
+# Wait for services to start
+print_status "Waiting for services to initialize (this may take a few minutes)..."
+sleep 30
 
 # Show status
 print_status "Checking containers status..."
-docker-compose ps
+docker-compose -f docker-compose.yml ps
 
-print_success "VPN Panel is now running!"
-print_status "Access the admin panel at: http://${DOMAIN}:8000"
-print_status "Admin credentials:"
-echo "Username: admin"
-echo "Password: ${ADMIN_PASSWORD}"
-echo ""
-print_status "Please change the admin password after first login!"
-
-# Save credentials
-mkdir -p /etc/vpn-panel
-echo "ADMIN_USERNAME=admin" > /etc/vpn-panel/credentials
-echo "ADMIN_PASSWORD=${ADMIN_PASSWORD}" >> /etc/vpn-panel/credentials
-echo "ADMIN_EMAIL=${EMAIL}" >> /etc/vpn-panel/credentials
-echo "DOMAIN=${DOMAIN}" >> /etc/vpn-panel/credentials
-chmod 600 /etc/vpn-panel/credentials
-
-print_success "Installation completed successfully!"
+# Check if the web service is running
+if docker-compose -f docker-compose.yml ps | grep -q "Up"; then
+    print_success "VPN Panel is now running!"
+    echo ""
+    echo "==============================================="
+    echo "          VPN Panel Installation Complete"
+    echo "==============================================="
+    echo ""
+    echo "Admin Panel: http://${DOMAIN}:8000"
+    echo "Username: admin"
+    echo "Password: ${ADMIN_PASSWORD}"
+    echo ""
+    echo "Important: Change the admin password after first login!"
+    echo ""
+    echo "==============================================="
+    echo ""
+    
+    # Save credentials
+    mkdir -p /etc/vpn-panel
+    echo "ADMIN_USERNAME=admin" > /etc/vpn-panel/credentials
+    echo "ADMIN_PASSWORD=${ADMIN_PASSWORD}" >> /etc/vpn-panel/credentials
+    echo "ADMIN_EMAIL=${EMAIL}" >> /etc/vpn-panel/credentials
+    echo "DOMAIN=${DOMAIN}" >> /etc/vpn-panel/credentials
+    chmod 600 /etc/vpn-panel/credentials
+    
+    print_success "Installation completed successfully!"
+    print_status "You can manage the VPN Panel with the following commands:"
+    echo "  Start:   cd /root/vpn-panel && docker-compose up -d"
+    echo "  Stop:    cd /root/vpn-panel && docker-compose down"
+    echo "  Logs:    cd /root/vpn-panel && docker-compose logs -f"
+    echo "  Upgrade: cd /root/vpn-panel && git pull && docker-compose up -d --build"
+    echo ""
+else
+    print_error "Failed to start VPN Panel. Please check the logs with: docker-compose logs"
+fi

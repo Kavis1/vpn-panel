@@ -1,6 +1,23 @@
 version: '3.8'
 
 services:
+  migrations:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vpn_panel_migrations
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - .:/app
+    command: ["/bin/sh", "-c", "chmod +x /app/scripts/run_migrations.sh && /app/scripts/run_migrations.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - vpn_network
+
   app:
     build:
       context: .
@@ -22,6 +39,7 @@ services:
       - db
       - redis
       - xray
+      - migrations
     networks:
       - vpn_network
 
@@ -36,6 +54,11 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - vpn_network
 
