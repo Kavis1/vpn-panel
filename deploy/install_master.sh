@@ -82,32 +82,52 @@ chmod +x /usr/local/bin/docker-compose || print_error "Failed to make Docker Com
 print_status "Setting up project directory..."
 mkdir -p /opt/vpn-panel/{backend,frontend,data/{postgres,redis,certs}} || print_error "Failed to create project directories"
 
-# Clone or update repository
-print_status "Setting up VPN Panel repository..."
-mkdir -p /opt/vpn-panel
+# Handle existing installation
+print_status "Checking for existing installation..."
+BACKUP_DIR="/opt/vpn-panel_backup_$(date +%Y%m%d_%H%M%S)"
 
 if [ -d "/opt/vpn-panel/backend" ]; then
-    cd /opt/vpn-panel/backend
+    print_status "Found existing installation. Creating backup at $BACKUP_DIR..."
     
-    if [ -d ".git" ]; then
-        # If it's a git repository, update it
-        print_status "Updating existing repository..."
-        git fetch origin
-        git reset --hard origin/main
-        git clean -fd
-    else
-        # If directory exists but is not a git repository
-        print_status "Directory exists but is not a git repository. Initializing..."
-        git init
-        git remote add origin https://github.com/Kavis1/vpn-panel.git
-        git fetch
-        git reset --hard origin/main
+    # Create backup directory
+    mkdir -p "$BACKUP_DIR"
+    
+    # Backup important files
+    if [ -f "/opt/vpn-panel/backend/.env" ]; then
+        cp "/opt/vpn-panel/backend/.env" "$BACKUP_DIR/"
     fi
-else
-    # Fresh clone
-    print_status "Cloning repository..."
-    git clone https://github.com/Kavis1/vpn-panel.git /opt/vpn-panel/backend || print_error "Failed to clone repository"
-    cd /opt/vpn-panel/backend
+    
+    if [ -d "/opt/vpn-panel/backend/alembic" ]; then
+        cp -r "/opt/vpn-panel/backend/alembic" "$BACKUP_DIR/"
+    fi
+    
+    # Remove existing installation
+    print_status "Removing existing installation..."
+    rm -rf /opt/vpn-panel/backend
+fi
+
+# Create directory structure
+print_status "Setting up VPN Panel repository..."
+mkdir -p /opt/vpn-panel/backend
+cd /opt/vpn-panel/backend
+
+# Clone fresh copy
+print_status "Cloning repository..."
+git clone https://github.com/Kavis1/vpn-panel.git . || print_error "Failed to clone repository"
+
+# Restore backup if exists
+if [ -d "$BACKUP_DIR" ]; then
+    print_status "Restoring backup from $BACKUP_DIR..."
+    
+    if [ -f "$BACKUP_DIR/.env" ]; then
+        cp "$BACKUP_DIR/.env" .
+    fi
+    
+    if [ -d "$BACKUP_DIR/alembic" ]; then
+        cp -r "$BACKUP_DIR/alembic" .
+    fi
+    
+    print_status "Backup restored. Original files are available at $BACKUP_DIR"
 fi
 
 # Set up Python virtual environment
