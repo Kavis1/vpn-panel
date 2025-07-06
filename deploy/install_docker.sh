@@ -68,37 +68,23 @@ ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d '=+/' | cut -c1-16)
 print_status "Creating .env file..."
 cat > .env << EOL
 # Database
-POSTGRES_USER=postgres
+POSTGRES_USER=${POSTGRES_USER}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-POSTGRES_DB=vpn_panel
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
+POSTGRES_DB=${POSTGRES_DB}
 
-# Redis
-REDIS_URL=redis://redis:6379/0
-
-# Application
+# App
 SECRET_KEY=${SECRET_KEY}
-DEBUG=False
-ALLOWED_HOSTS=${DOMAIN},localhost,127.0.0.1
-TIME_ZONE=UTC
-
-# First superuser
-FIRST_SUPERUSER=admin
-FIRST_SUPERUSER_PASSWORD=${ADMIN_PASSWORD}
-FIRST_SUPERUSER_EMAIL=${EMAIL}
+DOMAIN=${DOMAIN}
+TRAEFIK_ACME_EMAIL=${EMAIL}
 
 # Xray
-XRAY_API_HOST=xray
-XRAY_API_PORT=10085
-XRAY_EXECUTABLE_PATH=/usr/local/bin/xray
-
-# Traefik
-TRAEFIK_ACME_EMAIL=${EMAIL}
-DOMAIN=${DOMAIN}
+XRAY_API_PORT=${XRAY_API_PORT}
+XRAY_API_TOKEN=${XRAY_API_TOKEN}
 EOL
 
-print_success ".env file created with secure credentials"
+# Also create .env in the project directory
+mkdir -p /root/vpn-panel
+cp .env /root/vpn-panel/.env
 
 # Clone the repository if not already present
 if [ ! -d "vpn-panel" ]; then
@@ -114,20 +100,48 @@ fi
 # Copy .env to the project root
 cp .env .
 
-# Pull and start services
+# Start services
 print_status "Starting VPN Panel with Docker Compose..."
-docker-compose -f docker-compose.yml up -d --build
+cd /root/vpn-panel
+
+# Fix Xray network configuration in docker-compose.yml
+sed -i 's/network_mode: host//g' docker-compose.yml
+sed -i 's/networks:/  xray:\n    networks:\n      - vpn_network\n\nnetworks:/' docker-compose.yml
+
+# Start services with environment file
+if ! docker-compose --env-file /root/vpn-panel/.env up -d; then
+    print_error "Failed to start VPN Panel. Please check the logs with: docker-compose logs"
+    exit 1
+fi
 
 # Wait for services to start
 print_status "Waiting for services to initialize (this may take a few minutes)..."
 sleep 30
 
+# Check services status
+print_status "Checking containers status..."
+sleep 10  # Give containers time to start
+
+if ! docker-compose --env-file /root/vpn-panel/.env ps | grep -q "Up"; then
+    print_error "Some services failed to start. Please check the logs with: docker-compose logs"
+    
+    # Show container status for debugging
+    echo -e "\n[DEBUG] Current container status:"
+    docker-compose ps
+    
+    # Show last 20 lines of logs for each container
+    echo -e "\n[DEBUG] Last 20 lines of logs:"
+    docker-compose logs --tail=20
+    
+    exit 1
+fi
+
 # Show status
 print_status "Checking containers status..."
-docker-compose -f docker-compose.yml ps
+docker-compose --env-file /root/vpn-panel/.env ps
 
 # Check if the web service is running
-if docker-compose -f docker-compose.yml ps | grep -q "Up"; then
+if docker-compose --env-file /root/vpn-panel/.env ps | grep -q "Up"; then
     print_success "VPN Panel is now running!"
     echo ""
     echo "==============================================="
