@@ -18,19 +18,65 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set work directory
 WORKDIR /app
 
-# Copy project files
-COPY . .
+# Copy requirements first to leverage Docker cache
+COPY pyproject.toml .
+COPY requirements*.txt ./
 
 # Install dependencies
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -e . && \
-    pip install --no-cache-dir uvicorn[standard] gunicorn && \
-    # Verify installations
-    echo "===== Verifying installations =====" && \
-    echo "Python version: $(python --version)" && \
-    echo "Pip version: $(pip --version)" && \
-    echo "Uvicorn path: $(which uvicorn)" && \
-    echo "Uvicorn version: $(python -c \"import uvicorn; print(uvicorn.__version__)\")"
+    pip install --no-cache-dir uvicorn[standard] gunicorn
+
+# Copy the rest of the application
+COPY . .
+
+# Verify installations
+RUN python --version && \
+    pip --version && \
+    which uvicorn && \
+    python -c "import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')"
+
+# Production stage
+FROM python:3.10-slim as production
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN addgroup --system appuser && adduser --system --no-create-home --group appuser
+
+# Set work directory
+WORKDIR /app
+
+# Copy from builder
+COPY --from=builder /usr/local /usr/local
+COPY --from=builder /app /app
+
+# Create necessary directories and set permissions
+RUN mkdir -p /app/static /app/media /app/logs && \
+    chown -R appuser:appuser /app && \
+    chmod -R 755 /app/static /app/media /app/logs
+
+# Switch to non-root user
+USER appuser
+
+# Set environment variables
+ENV PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/usr/local/bin:${PATH}" \
+    UVICORN_HOST=0.0.0.0 \
+    UVICORN_PORT=8000 \
+    UVICORN_WORKERS=2 \
+    ALEMBIC_CONFIG=/app/alembic.ini
+
+# Expose the port the app runs on
+EXPOSE 8000
+
+# Command to run the application
+CMD ["python", "-m", "uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # Runtime stage
 FROM python:3.10-slim
