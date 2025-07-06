@@ -96,11 +96,22 @@ if [ -f "requirements.txt" ]; then
         pkg_name=$(echo "$pkg" | grep -o '^[^<>=!; ]*' | tr '[:upper:]' '[:lower:]')
         
         # Skip empty lines and comments
-# Install core Python dependencies if not already installed
+# Create and activate virtual environment
+if [ ! -d "/opt/vpn-panel/backend/venv" ]; then
+    print_status "Creating Python virtual environment..."
+    python3 -m venv /opt/vpn-panel/backend/venv || print_error "Failed to create virtual environment"
+fi
+
+# Activate virtual environment
+print_status "Activating Python virtual environment..."
+source /opt/vpn-panel/backend/venv/bin/activate || print_error "Failed to activate virtual environment"
+
+# Install core Python dependencies
 print_status "Installing core Python dependencies..."
 pip install --upgrade pip || print_status "Warning: Failed to upgrade pip"
 
 # Install required packages for database and migrations
+print_status "Installing database dependencies..."
 pip install alembic psycopg2-binary sqlalchemy || print_error "Failed to install database dependencies"
 
 # Run database migrations
@@ -112,10 +123,26 @@ mkdir -p /opt/vpn-panel/backend/migrations
 # Initialize alembic if not already initialized
 if [ ! -f "alembic.ini" ]; then
     print_status "Initializing alembic..."
-    PYTHONPATH=$PYTHONPATH:. alembic init alembic || {
-        print_status "Trying alternative approach to initialize alembic..."
-        python -m alembic init alembic || print_error "Failed to initialize alembic"
-    }
+    
+    # Ensure we're using the correct Python and pip
+    PYTHON_PATH=$(which python3)
+    PIP_PATH=$(which pip)
+    print_status "Using Python: $PYTHON_PATH"
+    print_status "Using pip: $PIP_PATH"
+    
+    # Try multiple approaches to initialize alembic
+    if ! PYTHONPATH=$PYTHONPATH:. $PYTHON_PATH -m alembic init alembic; then
+        print_status "First attempt failed, trying alternative approach..."
+        if ! PYTHONPATH=$PYTHONPATH:. /opt/vpn-panel/backend/venv/bin/python -m alembic init alembic; then
+            print_status "Second attempt failed, trying with full path..."
+            if [ -f "/opt/vpn-panel/backend/venv/bin/alembic" ]; then
+                /opt/vpn-panel/backend/venv/bin/alembic init alembic || 
+                print_error "Failed to initialize alembic after multiple attempts"
+            else
+                print_error "Alembic executable not found in venv/bin/"
+            fi
+        fi
+    fi
     
     # Copy our custom env.py if it exists
     if [ -f "alembic.ini.example" ]; then
@@ -143,21 +170,28 @@ cd /opt/vpn-panel/backend
 export PYTHONPATH=$PYTHONPATH:$(pwd)
 
 # Try multiple approaches to run migrations
-if ! PYTHONPATH=$PYTHONPATH:. alembic upgrade head; then
-    print_status "Standard alembic command failed, trying alternative approaches..."
-    
-    # Try with python -m alembic
-    if ! PYTHONPATH=$PYTHONPATH:. python -m alembic upgrade head; then
-        print_status "Second attempt failed, trying with full path..."
-        
-        # Try with full path to alembic
-        if [ -f "/opt/vpn-panel/backend/venv/bin/alembic" ]; then
-            /opt/vpn-panel/backend/venv/bin/alembic upgrade head || 
+print_status "Running database migrations..."
+
+# Set full path to Python and alembic
+PYTHON_BIN="/opt/vpn-panel/backend/venv/bin/python"
+ALEMBIC_BIN="/opt/vpn-panel/backend/venv/bin/alembic"
+
+# Try multiple approaches to run migrations
+if [ -f "$ALEMBIC_BIN" ]; then
+    print_status "Running migrations using $ALEMBIC_BIN..."
+    PYTHONPATH=$PYTHONPATH:. $ALEMBIC_BIN upgrade head || {
+        print_status "First attempt failed, trying alternative approach..."
+        PYTHONPATH=$PYTHONPATH:. $PYTHON_BIN -m alembic upgrade head || {
+            print_status "Second attempt failed, trying with system Python..."
+            PYTHONPATH=$PYTHONPATH:. python3 -m alembic upgrade head || 
             print_error "Failed to run database migrations after multiple attempts"
-        else
-            print_error "Alembic executable not found in venv/bin/"
-        fi
-    fi
+        }
+    }
+else
+    print_error "Alembic binary not found at $ALEMBIC_BIN"
+    print_status "Trying to install alembic globally..."
+    pip install alembic && PYTHONPATH=$PYTHONPATH:. alembic upgrade head || 
+    print_error "Failed to run database migrations"
 fi
 
 # Install Xray
