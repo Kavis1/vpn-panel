@@ -11,12 +11,17 @@
 
 ### Установка Master-сервера (Панель управления + API)
 ```bash
-wget -qO- https://raw.githubusercontent.com/Kavis1/vpn-panel/main/deploy/install_master.sh | bash
+bash <(curl -s https://raw.githubusercontent.com/Kavis1/vpn-panel/main/deploy/install_master.sh)
 ```
 
 ### Установка Node-сервера (VPN нода)
 ```bash
-wget -qO- https://raw.githubusercontent.com/Kavis1/vpn-panel/main/deploy/install_node.sh | bash
+bash <(curl -s https://raw.githubusercontent.com/Kavis1/vpn-panel/main/deploy/install_node.sh)
+```
+
+Или альтернативный вариант:
+```bash
+curl -s https://raw.githubusercontent.com/Kavis1/vpn-panel/main/deploy/install_master.sh | bash
 ```
 
 После установки Master-сервер будет доступен по IP-адресу сервера на порту 8000.
