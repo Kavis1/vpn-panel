@@ -17,6 +17,7 @@ import {
   CircularProgress,
   Alert,
   useTheme,
+  GridProps,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -30,10 +31,96 @@ import {
   SettingsEthernet as SettingsEthernetIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { styled } from '@mui/material/styles';
+import { styled, Theme } from '@mui/material/styles';
+import Tooltip from '@mui/material/Tooltip';
+
+// NodeStatus type
+type NodeStatus = 'online' | 'offline' | 'maintenance';
+
+// Node interface
+export interface Node {
+  id: string;
+  name: string;
+  status: NodeStatus;
+  host: string;
+  ip: string;
+  location: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  port?: number;
+  api_port?: number;
+  country?: string;
+  is_public?: boolean;
+  current_users?: number;
+  max_users?: number;
+}
+
+// NodeConnection interface
+export interface NodeConnection {
+  id: string;
+  user_id: string;
+  node_id: string;
+  ip_address: string;
+  connected_at: string;
+  last_seen: string;
+  transferred_bytes: number;
+  received_bytes: number;
+  protocol: string;
+  user_agent?: string;
+}
+
+// NodeStats interface
+export interface NodeStats {
+  cpu_usage: number;
+  memory_usage: number;
+  disk_usage: number;
+  network_in: number;
+  network_out: number;
+  active_connections: number;
+  total_connections: number;
+  uptime: number;
+  load_average: number[];
+  last_updated: string;
+  // Additional stats properties with default values
+  total_traffic: number;
+  cpu_percent: number;
+  memory_used: number;
+  memory_total: number;
+  disk_used: number;
+  disk_total: number;
+  network_rx: number;
+  total_network_rx: number;
+  network_tx: number;
+  total_network_tx: number;
+}
+
+// Default empty stats
+const defaultNodeStats: NodeStats = {
+  cpu_usage: 0,
+  memory_usage: 0,
+  disk_usage: 0,
+  network_in: 0,
+  network_out: 0,
+  active_connections: 0,
+  total_connections: 0,
+  uptime: 0,
+  load_average: [0, 0, 0],
+  last_updated: new Date().toISOString(),
+  total_traffic: 0,
+  cpu_percent: 0,
+  memory_used: 0,
+  memory_total: 0,
+  disk_used: 0,
+  disk_total: 0,
+  network_rx: 0,
+  total_network_rx: 0,
+  network_tx: 0,
+  total_network_tx: 0,
+};
+
+// Import services
 import { 
-  Node, 
-  NodeStatus,
   getNodeStats,
   getNodeConnections,
   toggleNodeStatus,
@@ -51,7 +138,12 @@ const StatCard = styled(Card)(({ theme }) => ({
   },
 }));
 
-const StatIcon = styled('div')(({ theme, color }) => ({
+interface StatIconProps {
+  color?: string;
+  theme?: Theme;
+}
+
+const StatIcon = styled('div')<StatIconProps>(({ theme, color }) => ({
   width: 48,
   height: 48,
   borderRadius: '50%',
@@ -63,7 +155,12 @@ const StatIcon = styled('div')(({ theme, color }) => ({
   color: color || theme.palette.primary.main,
 }));
 
-const StatusBadge = styled('span')(({ theme, status }) => ({
+interface StatusBadgeProps {
+  status: NodeStatus;
+  theme?: Theme;
+}
+
+const StatusBadge = styled('span')<StatusBadgeProps>(({ theme, status }) => ({
   display: 'inline-flex',
   alignItems: 'center',
   padding: '4px 8px',
@@ -100,36 +197,70 @@ const NodeDetails: React.FC<NodeDetailsProps> = ({
   const [error, setError] = useState<string | null>(null);
   const theme = useTheme();
   
-  // Fetch node stats
+    // Helper function to get progress color based on percentage
+  const getProgressColor = (value: number) => {
+    if (value < 50) return 'success';
+    if (value < 80) return 'warning';
+    return 'error';
+  };
+  
+  // Grid item component with proper typing for MUI v5
+  const GridItem = (props: any) => (
+    <Grid item component="div" {...props} />
+  );
+  
+  // Grid container component with proper typing for MUI v5
+  const GridContainer = (props: any) => (
+    <Grid container spacing={2} component="div" {...props} />
+  );
+  
+  // Fetch node stats with proper typing
   const { 
     data: statsData, 
     isLoading: isLoadingStats, 
-    refetch: refetchStats 
-  } = useQuery(
-    ['node-stats', node.id],
-    () => getNodeStats(node.id),
-    {
-      enabled: activeTab === 'overview' || activeTab === 'stats',
-      refetchInterval: 60000, // Refresh every minute
-    }
-  );
+    error: statsError,
+    refetch: refetchStats
+  } = useQuery<NodeStats>({
+    queryKey: ['nodeStats', node.id],
+    queryFn: async () => {
+      const response = await getNodeStats(node.id);
+      return { ...defaultNodeStats, ...response?.data };
+    },
+    enabled: activeTab === 'overview' || activeTab === 'stats',
+    refetchInterval: 60000, // Refresh every minute
+  });
   
-  // Fetch node connections
+  // Fetch node connections with proper typing
   const { 
-    data: connectionsData, 
+    data: connectionsData = [], 
     isLoading: isLoadingConnections, 
-    refetch: refetchConnections 
-  } = useQuery(
-    ['node-connections', node.id],
-    () => getNodeConnections(node.id),
-    {
-      enabled: activeTab === 'connections',
-      refetchInterval: 30000, // Refresh every 30 seconds
-    }
-  );
+    error: connectionsError,
+    refetch: refetchConnections
+  } = useQuery({
+    queryKey: ['nodeConnections', node.id],
+    queryFn: async () => {
+      const response = await getNodeConnections(node.id);
+      // Transform the API response to match our NodeConnection interface
+      return (response?.data || []).map((conn: any) => ({
+        id: conn.id,
+        user_id: conn.user_id,
+        node_id: conn.node_id,
+        ip_address: conn.ip,
+        connected_at: conn.connected_time,
+        last_seen: conn.last_seen || new Date().toISOString(),
+        transferred_bytes: conn.upload || 0,
+        received_bytes: conn.download || 0,
+        protocol: conn.protocol || 'unknown',
+        user_agent: conn.user_agent
+      }));
+    },
+    enabled: activeTab === 'connections',
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
   
-  const stats = statsData?.data || {};
-  const connections = connectionsData?.data || [];
+  // Use the data with proper fallbacks and type safety
+  const stats: NodeStats = statsData || defaultNodeStats;
+  const connections: NodeConnection[] = Array.isArray(connectionsData) ? connectionsData : [];
   
   const handleTabChange = (event: React.SyntheticEvent, newValue: string) => {
     setActiveTab(newValue);
@@ -187,18 +318,27 @@ const NodeDetails: React.FC<NodeDetailsProps> = ({
     return total > 0 ? Math.round((value / total) * 100) : 0;
   };
   
+  // Render loading state
+  if (isLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  // Render error state
+  if (error) {
+    return (
+      <Alert severity="error" sx={{ mb: 2 }}>
+        {error}
+      </Alert>
+    );
+  }
+
   return (
-    <Paper sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <Box 
-        sx={{ 
-          p: 2, 
-          display: 'flex', 
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderBottom: `1px solid ${theme.palette.divider}`
-        }}
-      >
+    <Paper component="div" sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box component="div" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box display="flex" alignItems="center">
           {node.status === 'online' ? (
             <CloudQueueIcon color="success" sx={{ mr: 1 }} />
@@ -293,8 +433,8 @@ const NodeDetails: React.FC<NodeDetailsProps> = ({
       {/* Content */}
       <Box sx={{ p: 2, flex: 1, overflow: 'auto' }}>
         {activeTab === 'overview' && (
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6} md={4}>
+          <GridContainer>
+            <GridItem>
               <StatCard>
                 <CardContent>
                   <StatIcon color="#4caf50">
@@ -308,302 +448,407 @@ const NodeDetails: React.FC<NodeDetailsProps> = ({
                   </Typography>
                 </CardContent>
               </StatCard>
-            </Grid>
+            </GridItem>
             
-            <Grid item xs={12} sm={6} md={4}>
+            <GridItem>
               <StatCard>
                 <CardContent>
-                  <StatIcon color="#2196f3">
-                    <SpeedIcon fontSize="large" />
-                  </StatIcon>
-                  <Typography variant="h6" align="center">
-                    {formatBytes(stats.total_traffic || 0)}
+                  <Typography color="textSecondary" gutterBottom>
+                    CPU Usage
                   </Typography>
-                  <Typography variant="body2" color="textSecondary" align="center">
-                    Всего трафика
+                  <Typography variant="h5" component="div">
+                    {stats.cpu_percent.toFixed(1)}%
                   </Typography>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={stats.cpu_percent} 
+                    color={getProgressColor(stats.cpu_percent)}
+                    sx={{ mt: 1 }}
+                  />
                 </CardContent>
               </StatCard>
-            </Grid>
+            </GridItem>
             
-            <Grid item xs={12} sm={6} md={4}>
+            <GridItem>
               <StatCard>
                 <CardContent>
-                  <StatIcon color="#9c27b0">
-                    <DnsIcon fontSize="large" />
-                  </StatIcon>
-                  <Typography variant="h6" align="center">
-                    {node.host}:{node.port}
+                  <Typography color="textSecondary" gutterBottom>
+                    Memory Usage
                   </Typography>
-                  <Typography variant="body2" color="textSecondary" align="center">
-                    Адрес сервера
+                  <Typography variant="h5" component="div">
+                    {formatBytes(stats.memory_used)} / {formatBytes(stats.memory_total)}
                   </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {calculatePercentage(stats.memory_used, stats.memory_total).toFixed(1)}% used
+                  </Typography>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={calculatePercentage(stats.memory_used, stats.memory_total)} 
+                    color={getProgressColor(calculatePercentage(stats.memory_used, stats.memory_total))}
+                    sx={{ mt: 1 }}
+                  />
                 </CardContent>
               </StatCard>
-            </Grid>
+            </GridItem>
             
-            <Grid item xs={12}>
-              <Paper sx={{ p: 2 }}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Информация о ноде
+            <GridItem>
+              <StatCard>
+                <CardContent>
+                  <Typography color="textSecondary" gutterBottom>
+                    Disk Usage
+                  </Typography>
+                  <Typography variant="h5" component="div">
+                    {formatBytes(stats.disk_used)} / {formatBytes(stats.disk_total)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {calculatePercentage(stats.disk_used, stats.disk_total).toFixed(1)}% used
+                  </Typography>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={calculatePercentage(stats.disk_used, stats.disk_total)} 
+                    color={getProgressColor(calculatePercentage(stats.disk_used, stats.disk_total))}
+                    sx={{ mt: 1 }}
+                  />
+                </CardContent>
+              </StatCard>
+            </GridItem>
+            
+            <GridItem xs={12}>
+              <Paper sx={{ p: 2, mt: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Network Traffic
                 </Typography>
-                <Divider sx={{ mb: 2 }} />
-                
                 <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="body2">
-                      <strong>Расположение:</strong> {node.location || 'Не указано'}
+                  <Grid item xs={12} sm={6}>
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <PublicIcon color="primary" sx={{ mr: 1 }} />
+                      <Typography variant="subtitle2">Incoming</Typography>
+                    </Box>
+                    <Typography variant="h6">
+                      {formatBytes(stats.network_rx)}/s
                     </Typography>
-                    <Typography variant="body2">
-                      <strong>Страна:</strong> {node.country || 'Не указана'}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>API порт:</strong> {node.api_port}
+                    <Typography variant="caption" color="text.secondary">
+                      Total: {formatBytes(stats.total_network_rx)}
                     </Typography>
                   </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="body2">
-                      <strong>Статус:</strong>{' '}
-                      <StatusBadge status={node.status}>
-                        {node.status === 'online' ? 'Онлайн' : 'Оффлайн'}
-                      </StatusBadge>
+                  
+                  <Grid item xs={12} sm={6}>
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <SettingsEthernetIcon color="secondary" sx={{ mr: 1 }} />
+                      <Typography variant="subtitle2">Outgoing</Typography>
+                    </Box>
+                    <Typography variant="h6">
+                      {formatBytes(stats.network_tx || 0)}/s
                     </Typography>
-                    <Typography variant="body2">
-                      <strong>Публичная:</strong> {node.is_public ? 'Да' : 'Нет'}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>Теги:</strong> {node.tags?.join(', ') || 'Нет'}
+                    <Typography variant="caption" color="textSecondary">
+                      Total: {formatBytes(stats.total_network_tx || 0)}
                     </Typography>
                   </Grid>
                 </Grid>
-                
-                <Box mt={2} display="flex" justifyContent="flex-end">
-                  <Button
-                    variant="outlined"
-                    color={node.status === 'online' ? 'error' : 'success'}
-                    onClick={handleToggleStatus}
-                    disabled={isLoading}
-                    startIcon={
-                      node.status === 'online' ? <CloudOffIcon /> : <CloudQueueIcon />
-                    }
-                  >
-                    {node.status === 'online' ? 'Выключить' : 'Включить'}
-                  </Button>
+              </Paper>
+            </GridItem>
+            
+            <GridItem xs={12}>
+              <Paper sx={{ p: 2, mt: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Load Average
+                </Typography>
+                <Box display="flex" gap={2} flexWrap="wrap">
+                  {stats.load_average.map((load, index) => (
+                    <Chip 
+                      key={index}
+                      label={`${load.toFixed(2)} (${index === 0 ? '1m' : index === 1 ? '5m' : '15m'})`}
+                      color={load > 1 ? 'error' : 'default'}
+                      variant="outlined"
+                    />
+                  ))}
                 </Box>
               </Paper>
-            </Grid>
-          </Grid>
-        )}
-        
-        {activeTab === 'stats' && (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Использование ресурсов
-            </Typography>
-            
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12} sm={6} md={4}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                    Загрузка CPU
-                  </Typography>
-                  <Box display="flex" alignItems="center">
-                    <Box width="100%" mr={1}>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={stats.cpu_percent || 0} 
-                        color={stats.cpu_percent > 80 ? 'error' : 'primary'}
-                      />
-                    </Box>
-                    <Typography variant="body2" color="textSecondary">
-                      {stats.cpu_percent || 0}%
-                    </Typography>
-                  </Box>
-                </Paper>
-              </Grid>
-              
-              <Grid item xs={12} sm={6} md={4}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                    Использование RAM
-                  </Typography>
-                  <Box display="flex" alignItems="center">
-                    <Box width="100%" mr={1}>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={calculatePercentage(
-                          (stats.memory_used || 0), 
-                          (stats.memory_total || 1)
-                        )} 
-                        color={calculatePercentage(
-                          (stats.memory_used || 0), 
-                          (stats.memory_total || 1)
-                        ) > 80 ? 'error' : 'primary'}
-                      />
-                    </Box>
-                    <Typography variant="body2" color="textSecondary">
-                      {formatBytes(stats.memory_used || 0)} / {formatBytes(stats.memory_total || 0)}
-                    </Typography>
-                  </Box>
-                </Paper>
-              </Grid>
-              
-              <Grid item xs={12} sm={6} md={4}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                    Использование диска
-                  </Typography>
-                  <Box display="flex" alignItems="center">
-                    <Box width="100%" mr={1}>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={calculatePercentage(
-                          (stats.disk_used || 0), 
-                          (stats.disk_total || 1)
-                        )} 
-                        color={calculatePercentage(
-                          (stats.disk_used || 0), 
-                          (stats.disk_total || 1)
-                        ) > 80 ? 'error' : 'primary'}
-                      />
-                    </Box>
-                    <Typography variant="body2" color="textSecondary">
-                      {formatBytes(stats.disk_used || 0)} / {formatBytes(stats.disk_total || 0)}
-                    </Typography>
-                  </Box>
-                </Paper>
-              </Grid>
-            </Grid>
-            
-            <Typography variant="h6" gutterBottom>
-              Сетевой трафик
-            </Typography>
-            
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <Paper sx={{ p: 2 }}>
+            </GridItem>
+          </GridContainer>
+        </GridContainer>
+      </Box>
+    </Box>
+    
+    {/* Tabs */}
+    <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+      <Tabs 
+        value={activeTab} 
+        onChange={handleTabChange}
+        variant="scrollable"
+        scrollButtons="auto"
+      >
+        <Tab 
+          label="Обзор" 
+          value="overview" 
+          disabled={isLoading}
+        />
+        <Tab 
+          label="Статистика" 
+          value="stats" 
+          disabled={isLoading}
+        />
+        <Tab 
+          label="Подключения" 
+          value="connections" 
+          disabled={isLoading}
+        />
+      </Tabs>
+    </Box>
+    
+    {/* Error Alert */}
+    {error && (
+      <Alert 
+        severity="error" 
+        sx={{ 
+          m: 2, 
+          '& .MuiAlert-message': { width: '100%' } 
+        }}
+        action={
+          <Button 
+            color="inherit" 
+            size="small" 
+            onClick={() => setError(null)}
+          >
+            Закрыть
+          </Button>
+        }
+      >
+        {error}
+      </Alert>
+    )}
+    
+    {/* Loading Indicator */}
+    {isLoading && (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <CircularProgress size={24} />
+      </Box>
+    )}
+    
+    {/* Content */}
+    <Box sx={{ p: 2, flex: 1, overflow: 'auto' }}>
+      {activeTab === 'overview' && (
+        <GridContainer>
+          <GridItem>
+            <StatCard>
+              <CardContent>
+                <StatIcon color="#4caf50">
+                  <PeopleIcon fontSize="large" />
+                </StatIcon>
+                <Typography variant="h6" align="center">
+                  {node.current_users || 0} / {node.max_users || '∞'}
+                </Typography>
+                <Typography variant="body2" color="textSecondary" align="center">
+                  Пользователи
+                </Typography>
+              </CardContent>
+            </StatCard>
+          </GridItem>
+          
+          <GridItem>
+            <StatCard>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  CPU Usage
+                </Typography>
+                <Typography variant="h5" component="div">
+                  {stats.cpu_percent.toFixed(1)}%
+                </Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={stats.cpu_percent} 
+                  color={getProgressColor(stats.cpu_percent)}
+                  sx={{ mt: 1 }}
+                />
+              </CardContent>
+            </StatCard>
+          </GridItem>
+          
+          <GridItem>
+            <StatCard>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Memory Usage
+                </Typography>
+                <Typography variant="h5" component="div">
+                  {formatBytes(stats.memory_used)} / {formatBytes(stats.memory_total)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {calculatePercentage(stats.memory_used, stats.memory_total).toFixed(1)}% used
+                </Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={calculatePercentage(stats.memory_used, stats.memory_total)} 
+                  color={getProgressColor(calculatePercentage(stats.memory_used, stats.memory_total))}
+                  sx={{ mt: 1 }}
+                />
+              </CardContent>
+            </StatCard>
+          </GridItem>
+          
+          <GridItem>
+            <StatCard>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Disk Usage
+                </Typography>
+                <Typography variant="h5" component="div">
+                  {formatBytes(stats.disk_used)} / {formatBytes(stats.disk_total)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {calculatePercentage(stats.disk_used, stats.disk_total).toFixed(1)}% used
+                </Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={calculatePercentage(stats.disk_used, stats.disk_total)} 
+                  color={getProgressColor(calculatePercentage(stats.disk_used, stats.disk_total))}
+                  sx={{ mt: 1 }}
+                />
+              </CardContent>
+            </StatCard>
+          </GridItem>
+          
+          <GridItem xs={12}>
+            <Paper sx={{ p: 2, mt: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Network Traffic
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
                   <Box display="flex" alignItems="center" mb={1}>
                     <PublicIcon color="primary" sx={{ mr: 1 }} />
-                    <Typography variant="subtitle2">Входящий трафик</Typography>
+                    <Typography variant="subtitle2">Incoming</Typography>
                   </Box>
                   <Typography variant="h6">
-                    {formatBytes(stats.network_rx || 0)}
+                    {formatBytes(stats.network_rx)}/s
                   </Typography>
-                  <Typography variant="caption" color="textSecondary">
-                    Всего: {formatBytes(stats.total_network_rx || 0)}
+                  <Typography variant="caption" color="text.secondary">
+                    Total: {formatBytes(stats.total_network_rx)}
                   </Typography>
-                </Paper>
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <Paper sx={{ p: 2 }}>
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
                   <Box display="flex" alignItems="center" mb={1}>
                     <SettingsEthernetIcon color="secondary" sx={{ mr: 1 }} />
-                    <Typography variant="subtitle2">Исходящий трафик</Typography>
+                    <Typography variant="subtitle2">Outgoing</Typography>
                   </Box>
                   <Typography variant="h6">
-                    {formatBytes(stats.network_tx || 0)}
+                    {formatBytes(stats.network_tx || 0)}/s
                   </Typography>
                   <Typography variant="caption" color="textSecondary">
-                    Всего: {formatBytes(stats.total_network_tx || 0)}
+                    Total: {formatBytes(stats.total_network_tx || 0)}
                   </Typography>
-                </Paper>
+                </Grid>
               </Grid>
-            </Grid>
-          </Box>
-        )}
-        
-        {activeTab === 'connections' && (
-          <Box>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="h6">
-                Активные подключения
+            </Paper>
+          </GridItem>
+          
+          <GridItem xs={12}>
+            <Paper sx={{ p: 2, mt: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Load Average
               </Typography>
-              <Box>
-                <Chip 
-                  label={`Всего: ${connections.length}`} 
-                  size="small" 
-                  color="primary"
-                  variant="outlined"
-                  sx={{ mr: 1 }}
-                />
-                <Button 
-                  size="small" 
-                  startIcon={<RefreshIcon />}
-                  onClick={() => refetchConnections()}
-                  disabled={isLoadingConnections}
-                >
-                  Обновить
-                </Button>
+              <Box display="flex" gap={2} flexWrap="wrap">
+                {stats.load_average.map((load, index) => (
+                  <Chip 
+                    key={index}
+                    label={`${load.toFixed(2)} (${index === 0 ? '1m' : index === 1 ? '5m' : '15m'})`}
+                    color={load > 1 ? 'error' : 'default'}
+                    variant="outlined"
+                  />
+                ))}
               </Box>
+            </Paper>
+          </GridItem>
+        </GridContainer>
+      </GridContainer>
+    </Box>
+    
+    {/* Tabs */}
+    <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+      <Tabs 
+        value={activeTab} 
+        onChange={handleTabChange}
+        variant="scrollable"
+        scrollButtons="auto"
+      >
+        <Tab 
+          label="Обзор" 
+          value="overview" 
+          disabled={isLoading}
+        />
+        <Tab 
+          label="Статистика" 
+          value="stats" 
+          disabled={isLoading}
+        />
+        <Tab 
+          label="Подключения" 
+          value="connections" 
+          disabled={isLoading}
+        />
+      </Tabs>
+    </Box>
+    
+    {/* Error Alert */}
+    {error && (
+      <Alert 
+        severity="error" 
+        sx={{ 
+          m: 2, 
+          '& .MuiAlert-message': { width: '100%' } 
+        }}
+        action={
+          <Button 
+            color="inherit" 
+            size="small" 
+            onClick={() => setError(null)}
+          >
+            Закрыть
+          </Button>
+        }
+      >
+        {error}
+      </Alert>
+    )}
+    
+    {/* Loading Indicator */}
+    {isLoading && (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <CircularProgress size={24} />
+      </Box>
+    )}
+    
+    {/* Content */}
+    <Box sx={{ p: 2, flex: 1, overflow: 'auto' }}>
+      {activeTab === 'connections' && (
+        <Box>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">
+              Активные подключения
+            </Typography>
+            <Box>
+              <Chip 
+                label={`Всего: ${connections.length}`} 
+                size="small" 
+                color="primary"
+                variant="outlined"
+                sx={{ mr: 1 }}
+              />
+              <Button 
+                size="small" 
+                startIcon={<RefreshIcon />}
+                onClick={() => refetchConnections()}
+                disabled={isLoadingConnections}
+              >
+                Обновить
+              </Button>
             </Box>
-            
-            {connections.length > 0 ? (
-              <Paper>
-                <Box sx={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: 'left', padding: '12px 16px', borderBottom: `1px solid ${theme.palette.divider}` }}>Пользователь</th>
-                        <th style={{ textAlign: 'left', padding: '12px 16px', borderBottom: `1px solid ${theme.palette.divider}` }}>IP</th>
-                        <th style={{ textAlign: 'left', padding: '12px 16px', borderBottom: `1px solid ${theme.palette.divider}` }}>Протокол</th>
-                        <th style={{ textAlign: 'right', padding: '12px 16px', borderBottom: `1px solid ${theme.palette.divider}` }}>Входящий</th>
-                        <th style={{ textAlign: 'right', padding: '12px 16px', borderBottom: `1px solid ${theme.palette.divider}` }}>Исходящий</th>
-                        <th style={{ textAlign: 'right', padding: '12px 16px', borderBottom: `1px solid ${theme.palette.divider}` }}>Время</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {connections.map((conn, index) => (
-                        <tr 
-                          key={index}
-                          style={{
-                            backgroundColor: index % 2 === 0 ? theme.palette.action.hover : 'transparent',
-                            transition: 'background-color 0.2s',
-                          }}
-                        >
-                          <td style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.palette.divider}` }}>
-                            <Typography variant="body2">
-                              {conn.username || 'Неизвестно'}
-                            </Typography>
-                          </td>
-                          <td style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.palette.divider}` }}>
-                            <Typography variant="body2">
-                              {conn.ip}
-                            </Typography>
-                          </td>
-                          <td style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.palette.divider}` }}>
-                            <Chip 
-                              label={conn.protocol.toUpperCase()} 
-                              size="small" 
-                              color="default"
-                              variant="outlined"
-                            />
-                          </td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', borderBottom: `1px solid ${theme.palette.divider}` }}>
-                            <Typography variant="body2">
-                              {formatBytes(conn.upload)}
-                            </Typography>
-                          </td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', borderBottom: `1px solid ${theme.palette.divider}` }}>
-                            <Typography variant="body2">
-                              {formatBytes(conn.download)}
-                            </Typography>
-                          </td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', borderBottom: `1px solid ${theme.palette.divider}` }}>
-                            <Typography variant="body2">
-                              {Math.floor(conn.connected_time / 60)} мин. {conn.connected_time % 60} сек.
-                            </Typography>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </Box>
               </Paper>
             ) : (
               <Paper sx={{ p: 3, textAlign: 'center' }}>
                 <Typography variant="body1" color="textSecondary">
-                  Нет активных подключений
+                  No active connections
                 </Typography>
               </Paper>
             )}

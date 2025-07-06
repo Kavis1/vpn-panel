@@ -63,7 +63,7 @@ mkdir -p "$(dirname "$LOG_FILE")"
 echo "VPN Panel installation started at $(date)" > "$LOG_FILE"
 
 # Check for required commands
-for cmd in docker docker-compose curl git node npm npx; do
+for cmd in docker docker-compose curl git nodejs npm npx; do
   if ! command -v "$cmd" &> /dev/null; then
     log "Command $cmd is required but not installed. Installing..." "$YELLOW"
     
@@ -74,6 +74,14 @@ for cmd in docker docker-compose curl git node npm npx; do
         apt-get install -y docker.io
       elif [ "$cmd" = "docker-compose" ]; then
         apt-get install -y docker-compose
+      elif [ "$cmd" = "nodejs" ]; then
+        # Install Node.js 18.x
+        curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+        apt-get install -y nodejs
+        # Create a symlink from nodejs to node if it doesn't exist
+        if ! command -v node &> /dev/null; then
+          ln -s /usr/bin/nodejs /usr/local/bin/node
+        fi
       else
         apt-get install -y "$cmd"
       fi
