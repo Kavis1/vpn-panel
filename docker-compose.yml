@@ -57,6 +57,11 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - vpn_network
 
@@ -65,12 +70,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: vpn_panel_migrations
+    user: root
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     volumes:
       - .:/app
-    command: sh -c "chmod +x /app/scripts/run_migrations.sh && /app/scripts/run_migrations.sh"
+    command: sh -c "chmod +x /app/scripts/run_migrations.sh && chown -R appuser:appuser /app/scripts/ && su -s /bin/sh -c '/app/scripts/run_migrations.sh' appuser"
     depends_on:
       db:
         condition: service_healthy
