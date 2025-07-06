@@ -82,31 +82,7 @@ chmod +x /usr/local/bin/docker-compose || print_error "Failed to make Docker Com
 print_status "Setting up project directory..."
 mkdir -p /opt/vpn-panel/{backend,frontend,data/{postgres,redis,certs}} || print_error "Failed to create project directories"
 
-# Handle existing installation
-print_status "Checking for existing installation..."
-BACKUP_DIR="/opt/vpn-panel_backup_$(date +%Y%m%d_%H%M%S)"
-
-if [ -d "/opt/vpn-panel/backend" ]; then
-    print_status "Found existing installation. Creating backup at $BACKUP_DIR..."
-    
-    # Create backup directory
-    mkdir -p "$BACKUP_DIR"
-    
-    # Backup important files
-    if [ -f "/opt/vpn-panel/backend/.env" ]; then
-        cp "/opt/vpn-panel/backend/.env" "$BACKUP_DIR/"
-    fi
-    
-    if [ -d "/opt/vpn-panel/backend/alembic" ]; then
-        cp -r "/opt/vpn-panel/backend/alembic" "$BACKUP_DIR/"
-    fi
-    
-    # Remove existing installation
-    print_status "Removing existing installation..."
-    rm -rf /opt/vpn-panel/backend
-fi
-
-# Create directory structure
+# Set up VPN Panel repository
 print_status "Setting up VPN Panel repository..."
 mkdir -p /opt/vpn-panel/backend
 cd /opt/vpn-panel/backend
@@ -125,20 +101,6 @@ git reset --hard origin/main
 print_status "Contents after git clone:"
 ls -la || true
 
-# Restore backup if exists
-if [ -d "$BACKUP_DIR" ]; then
-    print_status "Restoring backup from $BACKUP_DIR..."
-    
-    if [ -f "$BACKUP_DIR/.env" ]; then
-        cp "$BACKUP_DIR/.env" .
-    fi
-    
-    if [ -d "$BACKUP_DIR/alembic" ]; then
-        cp -r "$BACKUP_DIR/alembic" .
-    fi
-    
-    print_status "Backup restored. Original files are available at $BACKUP_DIR"
-fi
 
 # Set up Python virtual environment
 print_status "Setting up Python virtual environment..."
@@ -278,35 +240,89 @@ export PYTHONPATH=/opt/vpn-panel/backend:$PYTHONPATH
 cd /opt/vpn-panel/backend
 
 # Install the package in development mode
-print_status "Installing the package in development mode..."
+print_status "Checking if package is already installed..."
 cd /opt/vpn-panel/backend
 
-# Debug: List files in backend directory
-print_status "Contents of /opt/vpn-panel/backend:"
-ls -la || true
-
-# First try installing in development mode
-if [ -f "setup.py" ]; then
-    print_status "Found setup.py, installing in development mode..."
-    pip install -e . || {
-        print_status "Warning: Development mode installation failed, trying with --no-deps..."
-        pip install -e . --no-deps || print_status "Warning: Development mode with --no-deps failed"
-    }
-elif [ -f "pyproject.toml" ]; then
-    print_status "Found pyproject.toml, installing in development mode..."
-    pip install -e . || {
-        print_status "Warning: Development mode installation failed, trying with --no-deps..."
-        pip install -e . --no-deps || print_status "Warning: Development mode with --no-deps failed"
-    }
+# Check if the package is already installed
+if python3 -c "import app" &>/dev/null; then
+    print_status "Package is already installed, skipping installation..."
 else
-    print_status "Warning: No setup.py or pyproject.toml found in /opt/vpn-panel/backend"
-    print_status "Falling back to regular installation..."
+    # Debug: List files in backend directory
+    print_status "Contents of /opt/vpn-panel/backend:"
+    ls -la || true
+
+    # Try installing in development mode if package files exist
+    if [ -f "setup.py" ]; then
+        print_status "Found setup.py, checking if installation is needed..."
+        if ! python3 -c "import app" &>/dev/null; then
+            print_status "Installing in development mode..."
+            pip install -e . || {
+                print_status "Warning: Development mode installation failed, trying with --no-deps..."
+                pip install -e . --no-deps || print_status "Warning: Development mode with --no-deps failed"
+            }
+        else
+            print_status "Package is already installed, skipping..."
+        fi
+    elif [ -f "pyproject.toml" ]; then
+        print_status "Found pyproject.toml, checking if installation is needed..."
+        if ! python3 -c "import app" &>/dev/null; then
+            print_status "Installing in development mode..."
+            pip install -e . || {
+                print_status "Warning: Development mode installation failed, trying with --no-deps..."
+                pip install -e . --no-deps || print_status "Warning: Development mode with --no-deps failed"
+            }
+        else
+            print_status "Package is already installed, skipping..."
+        fi
+    else
+        print_status "Warning: No setup.py or pyproject.toml found in /opt/vpn-panel/backend"
+        print_status "Falling back to regular installation..."
+    }
 fi
+
+# Function to check if a Python package is installed
+is_package_installed() {
+    python3 -c "import $1" 2>/dev/null
+    return $?
+}
 
 # Install requirements directly from requirements.txt if it exists
 if [ -f "requirements.txt" ]; then
-    print_status "Installing requirements from requirements.txt..."
-    pip install -r requirements.txt || print_error "Failed to install requirements"
+    print_status "Checking and installing requirements from requirements.txt..."
+    
+    # Create a temporary directory for package checking
+    TEMP_DIR=$(mktemp -d)
+    
+    # Install pip-tools if not installed
+    if ! command -v pip-compile &> /dev/null; then
+        print_status "Installing pip-tools for dependency management..."
+        pip install --no-cache-dir pip-tools || print_error "Failed to install pip-tools"
+    fi
+    
+    # Generate a compiled requirements file with all dependencies
+    print_status "Checking for missing dependencies..."
+    pip-compile --quiet --output-file="$TEMP_DIR/requirements_compiled.txt" requirements.txt
+    
+    # Install missing packages only
+    while IFS= read -r pkg; do
+        # Extract package name (handling different requirement formats)
+        pkg_name=$(echo "$pkg" | grep -o '^[^<>=!; ]*' | tr '[:upper:]' '[:lower:]')
+        
+        # Skip empty lines and comments
+        [ -z "$pkg_name" ] && continue
+        [[ "$pkg_name" == "#"* ]] && continue
+        
+        # Check if package is already installed
+        if ! is_package_installed "$pkg_name"; then
+            print_status "Installing missing package: $pkg_name"
+            pip install --no-cache-dir "$pkg" || print_status "Warning: Failed to install $pkg"
+        else
+            print_status "Package already installed: $pkg_name"
+        fi
+    done < "$TEMP_DIR/requirements_compiled.txt"
+    
+    # Clean up
+    rm -rf "$TEMP_DIR"
 else
     print_status "No requirements.txt found, skipping requirements installation"
 fi
