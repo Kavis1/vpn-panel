@@ -27,6 +27,20 @@ if [ "$(id -u)" -ne 0 ]; then
     print_error "This script must be run as root"
 fi
 
+# Clean up existing containers and images
+print_status "Stopping and removing existing containers..."
+if [ -d "/root/vpn-panel" ]; then
+    cd /root/vpn-panel
+    docker-compose down || true
+    cd ..
+fi
+
+print_status "Removing old Docker images and volumes..."
+docker system prune -a -f --volumes
+
+# Create project directory if it doesn't exist
+mkdir -p /root/vpn-panel
+
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     print_status "Docker is not installed. Installing Docker..."
