@@ -36,7 +36,6 @@ services:
       - static_data:/app/static
       - media_data:/app/media
       - ./logs:/app/logs
-      - /usr/local/bin/uvicorn:/usr/local/bin/uvicorn:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -49,7 +48,7 @@ services:
     networks:
       - vpn_network
     healthcheck:
-      test: ["CMD", "sh", "-c", "which uvicorn && uvicorn --version"]
+      test: ["CMD", "sh", "-c", "which uvicorn && /usr/local/bin/uvicorn --version"]
       interval: 30s
       timeout: 10s
       retries: 3
