@@ -1,56 +1,43 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name = "vpn-panel"
 version = "0.1.0"
-description = "VPN Panel Management System"
-readme = "README.md"
-authors = [
-    { name = "Kavis", email = "kavis@example.com" }
-]
-requires-python = ">=3.10"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-]
-dependencies = [
-    "fastapi>=0.68.0",
-    "uvicorn[standard]>=0.15.0",
-    "sqlalchemy>=1.4.23",
-    "alembic>=1.7.4",
-    "psycopg2-binary>=2.9.1",
-    "python-jose[cryptography]>=3.3.0",
-    "passlib[bcrypt]>=1.7.4",
-    "python-multipart>=0.0.5",
-    "emails>=0.6",
-    "python-dotenv>=0.19.0",
-    "pydantic>=1.8.2",
-    "python-json-logger>=2.0.2",
-    "gunicorn>=20.1.0",
-    "celery[redis]>=5.2.2",
-    "httpx>=0.22.0"
-]
+description = "VPN Panel for managing VPN services"
+authors = ["Kavis1 <kavis1@example.com>"]
 
-[project.optional-dependencies]
-dev = ["pytest", "black", "isort", "mypy"]
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.92.0"
+uvicorn = "^0.20.0"
+gunicorn = "^20.1.0"
+psycopg2-binary = "^2.9.5"
+alembic = "^1.9.0"
+sqlalchemy = "^2.0.0"
+python-dotenv = "^0.21.0"
+redis = "^4.4.0"
+pydantic = "^2.0.0"
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+python-multipart = "^0.0.5"
+celery = "^5.2.2"
+httpx = "^0.22.0"
+emails = "^0.6"
+python-json-logger = "^2.0.2"
 
-[project.scripts]
+[tool.poetry.dev-dependencies]
+pytest = "^7.2.0"
+black = "^22.10.0"
+isort = "^5.10.1"
+mypy = "^0.991"
+
+[tool.poetry.scripts]
 vpn-panel = "backend.app.main:main"
 
-[project.entry-points.uvicorn]
-app = "backend.app.main:app"
-
-[tool.setuptools]
-package-dir = { "" = "." }
-packages = find:
-
-[tool.setuptools.packages.find]
-where = ["."]
+[tool.poetry.package]
 include = ["backend*", "alembic*"]
-namespaces = true
 
 [project.entry-points]
 console_scripts = [
