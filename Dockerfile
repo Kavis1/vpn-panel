@@ -87,22 +87,32 @@ COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
-# Install Celery and ensure it's in PATH
-RUN pip install --no-cache-dir celery[redis]==5.2.2 && \
+# Install required packages and ensure they're in PATH
+RUN pip install --no-cache-dir \
+    celery[redis]==5.2.2 \
+    uvicorn[standard]==0.22.0 && \
+    # Create symlinks for Celery
     ln -sf /usr/local/bin/celery /usr/bin/celery && \
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker && \
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat && \
-    chmod +x /usr/local/bin/celery*
+    # Create symlink for uvicorn
+    ln -sf /usr/local/bin/uvicorn /usr/bin/uvicorn && \
+    # Set executable permissions
+    chmod +x /usr/local/bin/celery* /usr/local/bin/uvicorn*
 
 # Set environment variables
 ENV PYTHONPATH=/app/backend:/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/usr/local/bin:${PATH}" \
+    PATH="/usr/local/bin:/usr/bin:${PATH}" \
+    # Celery settings
     CELERY_BIN="/usr/local/bin/celery" \
     CELERY_APP="app.worker" \
     CELERY_WORKER_CONCURRENCY=4 \
     CELERY_BEAT_SCHEDULE_FILE="/app/celerybeat-schedule" \
+    # Uvicorn settings
+    UVICORN_BIN="/usr/local/bin/uvicorn" \
+    # Application settings
     ALEMBIC_CONFIG=/app/alembic.ini
 
 # Create necessary directories and copy scripts
