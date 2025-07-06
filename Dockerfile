@@ -6,8 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=off \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100 \
-    POETRY_VERSION=1.5.1
+    PIP_DEFAULT_TIMEOUT=100
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -16,57 +15,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install "poetry==$POETRY_VERSION"
-
 # Set work directory
 WORKDIR /app
 
-# Create empty pyproject.toml if it doesn't exist
-COPY pyproject.toml* /app/
-RUN if [ ! -f /app/pyproject.toml ]; then \
-        echo '[tool.poetry]' > /app/pyproject.toml && \
-        echo 'name = "vpn-panel"' >> /app/pyproject.toml && \
-        echo 'version = "0.1.0"' >> /app/pyproject.toml && \
-        echo 'description = "VPN Panel"' >> /app/pyproject.toml && \
-        echo 'authors = ["Your Name <your.email@example.com>"]' >> /app/pyproject.toml && \
-        echo '' >> /app/pyproject.toml && \
-        echo '[tool.poetry.dependencies]' >> /app/pyproject.toml && \
-        echo 'python = "^3.10"' >> /app/pyproject.toml && \
-        echo 'fastapi = "^0.68.0"' >> /app/pyproject.toml && \
-        echo 'uvicorn = {extras = ["standard"], version = "^0.15.0"}' >> /app/pyproject.toml && \
-        echo 'sqlalchemy = "^1.4.23"' >> /app/pyproject.toml && \
-        echo 'alembic = "^1.7.4"' >> /app/pyproject.toml && \
-        echo 'psycopg2-binary = "^2.9.1"' >> /app/pyproject.toml && \
-        echo 'python-jose = {extras = ["cryptography"], version = "^3.3.0"}' >> /app/pyproject.toml && \
-        echo 'passlib = {extras = ["bcrypt"], version = "^1.7.4"}' >> /app/pyproject.toml && \
-        echo 'python-multipart = "^0.0.5"' >> /app/pyproject.toml && \
-        echo 'emails = "^0.6"' >> /app/pyproject.toml && \
-        echo 'python-dotenv = "^0.19.0"' >> /app/pyproject.toml && \
-        echo 'pydantic = "^1.8.2"' >> /app/pyproject.toml && \
-        echo 'python-json-logger = "^2.0.2"' >> /app/pyproject.toml && \
-        echo 'gunicorn = "^20.1.0"' >> /app/pyproject.toml && \
-        echo 'celery = {extras = ["redis"], version = "^5.2.2"}' >> /app/pyproject.toml && \
-        echo 'redis = "^4.1.0"' >> /app/pyproject.toml && \
-        echo 'httpx = "^0.22.0"' >> /app/pyproject.toml; \
-    fi
+# Copy project files
+COPY . .
 
-# Copy only requirements to cache them in docker layer
-COPY poetry.lock* /app/
-
-# Install dependencies
-RUN if [ -f /app/poetry.lock ]; then \
-        poetry config virtualenvs.create false && \
-        poetry install --no-interaction --no-ansi --no-root --only main; \
-    else \
-        poetry add fastapi uvicorn sqlalchemy alembic psycopg2-binary \
-            python-jose[cryptography] passlib[bcrypt] python-multipart \
-            emails python-dotenv pydantic python-json-logger gunicorn \
-            celery[redis] redis httpx --no-interaction; \
-    fi
-
-# Copy project
-COPY . /app
+# Install the project in development mode
+RUN pip install --upgrade pip && \
+    pip install -e .
 
 # Runtime stage
 FROM python:3.10-slim
@@ -87,32 +44,20 @@ COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
-# Install Python packages directly with pip
+# Install runtime dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    # Install uvicorn and other core dependencies first
     pip install --no-cache-dir \
         uvicorn[standard]==0.22.0 \
         gunicorn==20.1.0 \
         celery[redis]==5.2.2 && \
-    # Install the project in development mode
-    pip install --no-cache-dir -e . && \
-    # Create necessary symlinks
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker && \
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat && \
     # Verify installations
     echo "===== Verifying installations =====" && \
-    echo "Python version:" && python --version && \
-    echo "Pip version:" && pip --version && \
-    echo "Uvicorn info:" && \
-    which uvicorn && \
-    ls -la /usr/local/bin/uvicorn* && \
-    python -m pip show uvicorn && \
-    python -c "import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')" && \
-    # Set up environment variables
-    echo 'export PATH="/usr/local/bin:$PATH"' >> /root/.bashrc && \
-    echo 'export PATH="/usr/local/bin:$PATH"' >> /etc/profile && \
-    echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.profile && \
-    # Make scripts executable
+    echo "Python version: $(python --version)" && \
+    echo "Pip version: $(pip --version)" && \
+    echo "Uvicorn path: $(which uvicorn)" && \
+    echo "Uvicorn version: $(python -c \"import uvicorn; print(uvicorn.__version__)\")" && \
     chmod +x /usr/local/bin/*
 
 # Set environment variables
@@ -128,9 +73,9 @@ ENV PYTHONPATH=/app/backend:/app \
     # Uvicorn settings
     UVICORN_BIN="/usr/local/bin/uvicorn" \
     # Application settings
-    ALEMBIC_CONFIG=/app/alembic.ini
+    ALEMBIC_CONFIG=/app/backend/alembic.ini
 
-# Create necessary directories and copy scripts
+# Create necessary directories and set permissions
 RUN mkdir -p /app/static /app/media /app/logs /app/scripts \
     && chown -R appuser:appuser /app \
     && chmod -R 755 /app/static /app/media /app/logs
@@ -146,4 +91,4 @@ USER appuser
 EXPOSE 8000
 
 # Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
