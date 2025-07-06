@@ -18,12 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set work directory
 WORKDIR /app
 
-# Copy project files
-COPY . .
+# Copy only requirements first to leverage Docker cache
+COPY pyproject.toml ./
 
-# Install the project in development mode
+# Install dependencies first (this layer will be cached)
 RUN pip install --upgrade pip && \
-    pip install -e .
+    pip install -e . && \
+    pip install uvicorn[standard] gunicorn
 
 # Runtime stage
 FROM python:3.10-slim
@@ -40,16 +41,15 @@ RUN addgroup --system appuser && adduser --system --no-create-home --group appus
 WORKDIR /app
 
 # Copy from builder
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app /app
 
 # Install runtime dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
-        uvicorn[standard]==0.22.0 \
-        gunicorn==20.1.0 \
-        celery[redis]==5.2.2 && \
+        uvicorn[standard] \
+        gunicorn \
+        celery[redis] && \
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-worker && \
     ln -sf /usr/local/bin/celery /usr/local/bin/celery-beat && \
     # Verify installations
