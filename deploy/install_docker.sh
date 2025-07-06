@@ -46,14 +46,18 @@ if ! command -v docker-compose &> /dev/null; then
 fi
 
 # Get user input
-read -p "Enter your domain name (or press Enter to use IP address): " DOMAIN
-read -p "Enter admin email (for Let's Encrypt): " EMAIL
+read -p "Enter your domain name (or press Enter to use IP address): " USER_DOMAIN
+read -p "Enter admin email (for Let's Encrypt): " USER_EMAIL
 
 # Set default domain to IP if not provided
-if [ -z "$DOMAIN" ]; then
-    DOMAIN=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
-    print_status "Using detected IP address as domain: $DOMAIN"
+if [ -z "$USER_DOMAIN" ]; then
+    USER_DOMAIN=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
+    print_status "Using detected IP address as domain: $USER_DOMAIN"
 fi
+
+# Set domain and email variables
+export DOMAIN="$USER_DOMAIN"
+export EMAIL="$USER_EMAIL"
 
 # Generate random passwords
 POSTGRES_PASSWORD=$(openssl rand -base64 32)
