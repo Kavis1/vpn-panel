@@ -23,18 +23,19 @@ COPY pyproject.toml .
 COPY requirements*.txt ./
 
 # Install dependencies
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -e .
-RUN pip install --no-cache-dir uvicorn[standard] gunicorn
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -e . && \
+    pip install --no-cache-dir uvicorn[standard] gunicorn
+
+# Verify installations
+RUN echo "===== Verifying installations =====" && \
+    echo "Python version: $(python --version)" && \
+    echo "Pip version: $(pip --version)" && \
+    echo "Uvicorn path: $(which uvicorn)" && \
+    python -c "import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')"
 
 # Copy the rest of the application
 COPY . .
-
-# Verify installations
-RUN python --version
-RUN pip --version
-RUN which uvicorn || echo "uvicorn not found"
-RUN python -c "import uvicorn; print('Uvicorn version: {}'.format(uvicorn.__version__))"
 
 # Production stage
 FROM python:3.10-slim as production
