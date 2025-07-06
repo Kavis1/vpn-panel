@@ -47,24 +47,24 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /var/log/vpn-panel
+# Create necessary directories with proper permissions
+RUN mkdir -p /var/log/vpn-panel && \
+    mkdir -p /app/backend/static && \
+    chown -R appuser:appuser /app /var/log/vpn-panel
 
 # Set environment variables
-ENV PATH=/root/.local/bin:$PATH
+ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONPATH=/app
-
-# Expose the port the app runs on
-EXPOSE 8000
-
-# Command to run the application
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Create a non-root user
-RUN useradd -m appuser && chown -R appuser:appuser /app
+# Create a non-root user and set permissions
+RUN useradd -m -d /home/appuser appuser && \
+    chown -R appuser:appuser /app /var/log/vpn-panel
+
+# Switch to non-root user
 USER appuser
+WORKDIR /app
 
 # Expose the port the app runs on
 EXPOSE 8000

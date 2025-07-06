@@ -46,6 +46,9 @@ services:
       UVICORN_HOST: 0.0.0.0
       UVICORN_PORT: 8000
       PYTHONPATH: /app
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+    user: "1000:1000"  # Run as non-root user
     ports:
       - "8000:8000"
     depends_on:
@@ -54,9 +57,12 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - .:/app
+      - .:/app:delegated
+      - /app/backend/static
+      - /var/log/vpn-panel:/var/log/vpn-panel
     command: >
-      sh -c "cd /app && 
+      sh -c "mkdir -p /app/backend/static && 
+      chown -R 1000:1000 /app /var/log/vpn-panel && 
       python -m uvicorn backend.app.main:app 
       --host 0.0.0.0 
       --port 8000 
