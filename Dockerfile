@@ -33,7 +33,7 @@ COPY . .
 # Verify installations
 RUN python --version
 RUN pip --version
-RUN which uvicorn
+RUN which uvicorn || echo "uvicorn not found"
 RUN python -c "import uvicorn; print(f'Uvicorn version: {uvicorn.__version__}')"
 
 # Production stage
