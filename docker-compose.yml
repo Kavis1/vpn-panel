@@ -80,10 +80,15 @@ services:
       - NET_ADMIN
     network_mode: host
     volumes:
-      - ./xray/config.json:/etc/xray/config.json
-      - ./xray/certs:/etc/xray/certs
+      - xray_config:/etc/xray
+      - xray_certs:/etc/xray/certs
     environment:
       - TZ=UTC
+    command: >
+      sh -c "mkdir -p /etc/xray && \
+      [ ! -f /etc/xray/config.json ] && \
+      echo '{\n        \"log\": {\n          \"loglevel\": \"warning\",\n          \"access\": \"/var/log/xray/access.log\",\n          \"error\": \"/var/log/xray/error.log\"\n        },\n        \"inbounds\": [],\n        \"outbounds\": [\n          {\n            \"protocol\": \"freedom\",\n            \"settings\": {}\n          }\n        ],\n        \"routing\": {\n          \"domainStrategy\": \"AsIs\",\n          \"rules\": []\n        }\n      }' > /etc/xray/config.json; \
+      /usr/bin/xray -config /etc/xray/config.json"
     depends_on:
       - db
     networks:
@@ -162,3 +167,5 @@ volumes:
   static_data:
   media_data:
   traefik_certs:
+  xray_config:
+  xray_certs:
