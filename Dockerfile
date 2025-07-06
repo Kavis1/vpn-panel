@@ -15,10 +15,10 @@ RUN pip install --no-cache-dir poetry==1.4.2
 # Copy only requirements to cache them in docker layer
 COPY pyproject.toml poetry.lock* ./
 
-# Install dependencies
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-interaction --no-ansi --no-root && \
-    poetry export -f requirements.txt --output requirements.txt --without-hashes
+# Install dependencies directly without virtualenv
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -U setuptools wheel && \
+    pip install --no-cache-dir -e .
 
 # Runtime stage
 FROM python:3.9-slim
