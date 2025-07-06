@@ -47,6 +47,16 @@ services:
         condition: service_completed_successfully
     networks:
       - vpn_network
+    command: >
+      sh -c "cd /app && \
+             export PATH=\"/usr/local/bin:$PATH\" && \
+             PYTHONPATH=/app \
+             python -m uvicorn app.main:app \
+             --host 0.0.0.0 \
+             --port 8000 \
+             --reload \
+             --reload-dir /app \
+             --log-level debug"
     healthcheck:
       test: ["CMD", "sh", "-c", "python -m pip show uvicorn && python -c \"import uvicorn; print(uvicorn.__version__)\""]
       interval: 30s
