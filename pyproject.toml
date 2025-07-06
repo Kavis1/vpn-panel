@@ -7,10 +7,19 @@ name = "vpn-panel"
 version = "0.1.0"
 description = "VPN Panel for managing VPN services"
 authors = ["Kavis1 <kavis1@example.com>"]
+readme = "README.md"
+repository = "https://github.com/Kavis1/vpn-panel"
+keywords = ["vpn", "panel", "proxy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python :: 3.9",
+]
 packages = [
     { include = "backend" },
     { include = "alembic" }
 ]
+include = ["alembic.ini"]
 
 [tool.poetry.dependencies]
 python = "^3.9"

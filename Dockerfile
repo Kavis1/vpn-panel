@@ -3,6 +3,11 @@ FROM python:3.9-slim as builder
 
 WORKDIR /app
 
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -15,15 +20,20 @@ RUN pip install --no-cache-dir poetry==1.4.2
 # Copy only requirements to cache them in docker layer
 COPY pyproject.toml poetry.lock* ./
 
-# Install dependencies directly without virtualenv
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -U setuptools wheel && \
-    pip install --no-cache-dir -e .
+# Install project dependencies
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi --no-root && \
+    poetry export -f requirements.txt --output requirements.txt --without-hashes
 
 # Runtime stage
 FROM python:3.9-slim
 
 WORKDIR /app
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,9 +50,15 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p /var/log/vpn-panel
 
-# Make sure scripts in .local are usable
+# Set environment variables
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONPATH=/app
+
+# Expose the port the app runs on
+EXPOSE 8000
+
+# Command to run the application
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
