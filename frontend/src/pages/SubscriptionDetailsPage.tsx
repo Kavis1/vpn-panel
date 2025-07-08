@@ -37,8 +37,8 @@ import {
   TableRow,
   TablePagination,
   Snackbar,
-  SelectChangeEvent,
 } from '@mui/material';
+import { SelectChangeEvent } from '@mui/material/Select';
 import {
   ArrowBack as ArrowBackIcon,
   Edit as EditIcon,
@@ -216,8 +216,12 @@ const SubscriptionDetailsPage: React.FC = () => {
     }
   );
   
-  // ... rest of the component code will be added in the next part ...
+  // Event handlers
+  const handleCloseSnackbar = () => {
+    setOpenSnackbar(false);
+  };
   
+  // Loading state
   if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">

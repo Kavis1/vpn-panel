@@ -111,13 +111,10 @@ export const createSubscription = async (
 /**
  * Updates an existing subscription
  */
-export const updateSubscription = async ({
-  subscriptionId,
-  subscriptionData,
-}: {
-  subscriptionId: string;
-  subscriptionData: UpdateSubscriptionData;
-}): Promise<{ data: Subscription }> => {
+export const updateSubscription = async (
+  subscriptionId: string,
+  subscriptionData: UpdateSubscriptionData
+): Promise<{ data: Subscription }> => {
   try {
     const response = await api.put(`/subscriptions/${subscriptionId}`, subscriptionData);
     return response.data;
@@ -142,13 +139,10 @@ export const deleteSubscription = async (subscriptionId: string): Promise<void> 
 /**
  * Renews a subscription by extending its expiration date
  */
-export const renewSubscription = async ({
-  subscriptionId,
-  days,
-}: {
-  subscriptionId: string;
-  days: number;
-}): Promise<{ data: Subscription }> => {
+export const renewSubscription = async (
+  subscriptionId: string,
+  days: number
+): Promise<{ data: Subscription }> => {
   try {
     const response = await api.post(`/subscriptions/${subscriptionId}/renew`, { days });
     return response.data;
@@ -161,13 +155,10 @@ export const renewSubscription = async ({
 /**
  * Toggles subscription status (active/suspended)
  */
-export const toggleSubscriptionStatus = async ({
-  subscriptionId,
-  status,
-}: {
-  subscriptionId: string;
-  status: 'active' | 'suspended';
-}): Promise<{ data: Subscription }> => {
+export const toggleSubscriptionStatus = async (
+  subscriptionId: string,
+  status: 'active' | 'suspended'
+): Promise<{ data: Subscription }> => {
   try {
     const response = await api.patch(`/subscriptions/${subscriptionId}/status`, { status });
     return response.data;
@@ -232,13 +223,10 @@ export const getSubscriptionLogs = async (
 /**
  * Updates IP whitelist for a subscription
  */
-export const updateIpWhitelist = async ({
-  subscriptionId,
-  ipAddresses,
-}: {
-  subscriptionId: string;
-  ipAddresses: string[];
-}): Promise<{ data: Subscription }> => {
+export const updateIpWhitelist = async (
+  subscriptionId: string,
+  ipAddresses: string[]
+): Promise<{ data: Subscription }> => {
   try {
     const response = await api.put(`/subscriptions/${subscriptionId}/ip-whitelist`, {
       ip_addresses: ipAddresses,
@@ -253,13 +241,10 @@ export const updateIpWhitelist = async ({
 /**
  * Updates IP blacklist for a subscription
  */
-export const updateIpBlacklist = async ({
-  subscriptionId,
-  ipAddresses,
-}: {
-  subscriptionId: string;
-  ipAddresses: string[];
-}): Promise<{ data: Subscription }> => {
+export const updateIpBlacklist = async (
+  subscriptionId: string,
+  ipAddresses: string[]
+): Promise<{ data: Subscription }> => {
   try {
     const response = await api.put(`/subscriptions/${subscriptionId}/ip-blacklist`, {
       ip_addresses: ipAddresses,

@@ -30,7 +30,7 @@ import {
   DataUsage as DataUsageIcon,
 } from '@mui/icons-material';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { formatBytes } from '../../../utils/formatters';
+import { formatBytes } from '../../utils/formatters';
 
 interface UsageDataPoint {
   date: string;

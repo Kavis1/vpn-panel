@@ -23,6 +23,8 @@ import {
   Skeleton,
   CardActions,
   Link,
+  CircularProgress,
+  Paper,
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -51,6 +53,7 @@ import {
   Link as LinkIcon,
   CopyAll as CopyIcon,
   OpenInNew as OpenInNewIcon,
+  ContentCopy as ContentCopyIcon,
 } from '@mui/icons-material';
 import { formatBytes, formatDate, formatDateTime, formatDuration } from '../../utils/formatters';
 import { Subscription, SubscriptionStatus } from '../../types/subscription';
@@ -225,8 +228,8 @@ const SubscriptionOverviewTab: React.FC<SubscriptionOverviewTabProps> = ({
                       <NodeIcon color="action" />
                     </ListItemIcon>
                     <ListItemText 
-                      primary={node?.name || 'Неизвестно'} 
-                      secondary="Название ноды"
+                      primary={user?.username || 'Неизвестно'} 
+                      secondary="Пользователь"
                     />
                   </ListItem>
                   <ListItem>
@@ -236,17 +239,17 @@ const SubscriptionOverviewTab: React.FC<SubscriptionOverviewTabProps> = ({
                     <ListItemText 
                       primary={
                         <Box component="span" sx={{ display: 'flex', alignItems: 'center' }}>
-                          {node?.id.substring(0, 8)}...
+                          {user?.email || 'Неизвестно'}
                           <IconButton 
                             size="small" 
-                            onClick={() => node?.id && handleCopyToClipboard(node.id)}
+                            onClick={() => user?.email && handleCopyToClipboard(user.email)}
                             sx={{ ml: 0.5, p: 0.5 }}
                           >
                             <CopyIcon fontSize="small" />
                           </IconButton>
                         </Box>
                       } 
-                      secondary="ID ноды"
+                      secondary="Email"
                     />
                     <ListItemSecondaryAction>
                       <Tooltip title="Открыть ноду">
@@ -294,7 +297,7 @@ const SubscriptionOverviewTab: React.FC<SubscriptionOverviewTabProps> = ({
                       <PublicIcon color="action" />
                     </ListItemIcon>
                     <ListItemText 
-                      primary={node.host} 
+                      primary={node.hostname} 
                       secondary="Хост"
                     />
                   </ListItem>
@@ -329,7 +332,7 @@ const SubscriptionOverviewTab: React.FC<SubscriptionOverviewTabProps> = ({
                       <StorageIcon color="action" />
                     </ListItemIcon>
                     <ListItemText 
-                      primary={`${node.location?.city || 'Неизвестно'}, ${node.location?.country || ''}`} 
+                      primary={`${node.city || 'Неизвестно'}, ${node.country || ''}`} 
                       secondary="Расположение"
                     />
                   </ListItem>
@@ -398,21 +401,21 @@ const SubscriptionOverviewTab: React.FC<SubscriptionOverviewTabProps> = ({
                       </ListItemIcon>
                       <ListItemText 
                         primary={
-                          subscription.expire_date 
-                            ? formatDate(subscription.expire_date) + (isExpired ? ' (Истекла)' : '')
+                          subscription.expires_at 
+                            ? formatDate(subscription.expires_at) + (isExpired ? ' (Истекла)' : '')
                             : 'Бессрочная'
-                        } 
+                        }
                         secondary="Дата истечения"
                         primaryTypographyProps={{
                           color: isExpired ? 'error' : 'inherit',
                         }}
                       />
-                      {subscription.expire_date && !isExpired && (
+                      {subscription.expires_at && !isExpired && (
                         <ListItemSecondaryAction>
                           <Chip 
                             size="small" 
                             label={`Осталось: ${formatDuration(
-                              (new Date(subscription.expire_date).getTime() - Date.now()) / 1000
+                              (new Date(subscription.expires_at).getTime() - Date.now()) / 1000
                             )}`} 
                             color="info"
                             variant="outlined"
@@ -439,7 +442,7 @@ const SubscriptionOverviewTab: React.FC<SubscriptionOverviewTabProps> = ({
                   <List dense>
                     <ListItem>
                       <ListItemIcon>
-                        <CheckCircleIcon color={subscription.auto_renew ? 'success' : 'disabled'} />
+                        <CheckCircleIcon color={subscription.is_active ? 'success' : 'disabled'} />
                       </ListItemIcon>
                       <ListItemText 
                         primary={
@@ -510,7 +513,7 @@ const SubscriptionOverviewTab: React.FC<SubscriptionOverviewTabProps> = ({
                 </Avatar>
               }
               title="Использование трафика"
-              subheader={`${formatBytes(subscription.data_used)} / ${subscription.data_limit ? formatBytes(subscription.data_limit) : 'Безлимит'}`}
+              subheader={`${formatBytes(subscription.traffic_used)} / ${subscription.traffic_limit ? formatBytes(subscription.traffic_limit) : 'Безлимит'}`}
             />
             <Divider />
             <CardContent>
@@ -548,7 +551,7 @@ const SubscriptionOverviewTab: React.FC<SubscriptionOverviewTabProps> = ({
                   >
                     <DataUsageIcon fontSize="large" />
                     <Typography variant="h6" gutterBottom>
-                      {formatBytes(subscription.data_used)}
+                      {formatBytes(subscription.traffic_used)}
                     </Typography>
                     <Typography variant="body2">
                       Использовано
@@ -564,8 +567,8 @@ const SubscriptionOverviewTab: React.FC<SubscriptionOverviewTabProps> = ({
                   >
                     <StorageIcon fontSize="large" color="action" />
                     <Typography variant="h6" gutterBottom>
-                      {subscription.data_limit 
-                        ? formatBytes(subscription.data_limit - subscription.data_used) 
+                      {subscription.traffic_limit 
+                        ? formatBytes(subscription.traffic_limit - subscription.traffic_used) 
                         : 'Безлимит'}
                     </Typography>
                     <Typography variant="body2" color="textSecondary">
