@@ -1,0 +1,14 @@
+# Зависимости для тестирования
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+httpx>=0.24.0
+aiosqlite>=0.19.0
+
+# Для мокирования HTTP запросов
+aioresponses>=0.7.4
+
+# Для генерации тестовых данных
+factory-boy>=3.2.0
+faker>=18.0.0

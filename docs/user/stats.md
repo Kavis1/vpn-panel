@@ -1,0 +1,3 @@
+# Stats
+
+Documentation for stats.

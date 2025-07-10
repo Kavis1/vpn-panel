@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./frontend
+    container_name: vpn-panel-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - vpn_network
+
+  db:
+    image: postgres:13-alpine
+    container_name: vpn_panel_db
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vpn_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: vpn_panel_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vpn_network
+
+  backend:
+    build: .
+    container_name: vpn-panel-backend
+    restart: always
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: 8000
+      PYTHONPATH: /app
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      FRONTEND_URL: http://localhost
+    user: "1000:1000"  # Run as non-root user
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app:delegated
+      - vpn-panel-static:/app/backend/static
+      - vpn-panel-logs:/var/log/vpn-panel
+    command: >
+      bash -c "
+      # Wait for database to be ready
+      until pg_isready -h db -U ${POSTGRES_USER} -d ${POSTGRES_DB}; do
+        echo 'Waiting for PostgreSQL...'
+        sleep 1
+      done
+      
+      # Run migrations
+      alembic upgrade head
+      
+      # Start the application
+      python -m uvicorn backend.app.main:app 
+        --host 0.0.0.0 
+        --port 8000 
+        --workers 2 
+        --log-level info
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - vpn_network
+
+networks:
+  vpn_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  vpn-panel-static:
+  vpn-panel-logs:

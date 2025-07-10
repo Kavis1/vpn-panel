@@ -1,0 +1,3 @@
+# Structure
+
+Documentation for structure.
