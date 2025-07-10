@@ -1,32 +1,29 @@
 # Build stage
-FROM python:3.9-slim as builder
+FROM python:3.12-slim as builder
 
 WORKDIR /app
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libpq-dev \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Install Poetry
-RUN pip install --no-cache-dir poetry==1.4.2
-
-# Copy only requirements to cache them in docker layer
-COPY pyproject.toml poetry.lock* ./
-
-# Install project dependencies
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-interaction --no-ansi --no-root && \
-    poetry export -f requirements.txt --output requirements.txt --without-hashes
+# Copy requirements and install dependencies
+COPY requirements.txt ./
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Runtime stage
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
